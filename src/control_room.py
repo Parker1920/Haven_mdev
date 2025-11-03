@@ -141,9 +141,6 @@ class ControlRoom(ctk.CTk):
         qa_hover = "#2a4a7c"   # lighter blue
         self._mk_btn(sidebar, "🛰️ Launch System Entry (Wizard)", self.launch_gui,
                      fg=qa_fg, hover=qa_hover, text_color=COLORS['text_primary']).pack(padx=20, pady=4, fill="x")
-        # Classic (Phase 1) launcher
-        self._mk_btn(sidebar, "🧰 Launch Classic (Phase 1)", self.launch_gui_classic,
-                     fg=qa_fg, hover=qa_hover, text_color=COLORS['text_primary']).pack(padx=20, pady=2, fill="x")
         self._mk_btn(sidebar, "🗺️ Generate Map", self.generate_map,
                      fg=qa_fg, hover=qa_hover, text_color=COLORS['text_primary']).pack(padx=20, pady=4, fill="x")
         self._mk_btn(sidebar, "🌐 Open Latest Map", self.open_latest_map,
@@ -258,24 +255,6 @@ class ControlRoom(ctk.CTk):
                     cmd = [sys.executable, str(app)]
                     subprocess.Popen(cmd, cwd=str(project_root()))
                 self._log("System Entry Wizard launched.")
-            except Exception as e:
-                self._log(f"Launch failed: {e}")
-        self._run_bg(run)
-
-    def launch_gui_classic(self):
-        self._log("Launching Classic System Entry (Phase 1)…")
-        def run():
-            try:
-                if self._frozen:
-                    # Not a separate entry; launch via python script path if available
-                    app = src_dir() / 'system_entry_modern.py'
-                    cmd = [sys.executable, str(app)]
-                    subprocess.Popen(cmd, cwd=str(project_root()))
-                else:
-                    app = src_dir() / 'system_entry_modern.py'
-                    cmd = [sys.executable, str(app)]
-                    subprocess.Popen(cmd, cwd=str(project_root()))
-                self._log("Classic System Entry launched.")
             except Exception as e:
                 self._log(f"Launch failed: {e}")
         self._run_bg(run)
@@ -395,7 +374,6 @@ class ControlRoom(ctk.CTk):
                     '--specpath', str(spec_dir),
                     '--workpath', str(workpath),
                     '--distpath', str(output_dir),
-                    '--hidden-import', 'system_entry_modern',
                     '--hidden-import', 'system_entry_wizard',
                     '--hidden-import', 'Beta_VH_Map',
                     str(script)
@@ -449,7 +427,7 @@ class ControlRoom(ctk.CTk):
                         "1) python3 -m pip install --upgrade pip\n"
                         "2) python3 -m pip install pyinstaller\n"
                         "3) python3 -m PyInstaller --noconfirm --clean --windowed --onefile \n"
-                        "   --name HavenControlRoom --hidden-import system_entry_modern --hidden-import system_entry_wizard --hidden-import Beta_VH_Map \n"
+                        "   --name HavenControlRoom --hidden-import system_entry_wizard --hidden-import Beta_VH_Map \n"
                         "   src/control_room.py\n\n"
                         "Output: dist/HavenControlRoom (macOS app).\n"
                     )
@@ -498,7 +476,6 @@ class ControlRoom(ctk.CTk):
                         '--specpath', str(spec_dir),
                         '--workpath', str(workpath),
                         '--distpath', str(output_dir),
-                        '--hidden-import', 'system_entry_modern',
                         '--hidden-import', 'system_entry_wizard',
                         '--hidden-import', 'Beta_VH_Map',
                         str(script)

@@ -1,116 +1,147 @@
-# Haven Control Room — Quick Start
+# Haven Control Room — Complete Star Mapping System
 
-Welcome! This is the Haven star mapping system with a modern GUI and 3D map viewer.
+Welcome to **Haven Control Room**, a comprehensive star mapping and data collection toolkit for No Man's Sky explorers. This system provides everything you need to catalog, visualize, and share your discoveries in an interactive 3D galaxy map.
 
-## Setup (Python Required)
+## Table of Contents
+
+### [Chapter 1: Overview & Quick Start](docs/overview_quickstart.md)
+- What Haven Control Room does
+- Key features and capabilities
+- 5-minute setup guide
+- Basic workflow overview
+
+### [Chapter 2: Installation & Setup](docs/installation_setup.md)
+- System requirements
+- Python installation guide
+- Virtual environment setup
+- Dependency installation
+- First-time configuration
+
+### [Chapter 3: Control Room Interface](docs/control_room_guide.md)
+- Launching the Control Room
+- Interface overview and layout
+- Quick actions and file management
+- Advanced tools and settings
+- Log monitoring and troubleshooting
+
+### [Chapter 4: System Entry Wizard](docs/system_entry_wizard_guide.md)
+- Complete guide to adding star systems
+- Two-page workflow (System Info → Planets & Moons)
+- Planet and moon data entry
+- Photo management and file handling
+- Edit mode and data validation
+
+### [Chapter 5: 3D Galaxy Map Generation](docs/galaxy_map_guide.md)
+- Map generation process
+- Interactive 3D visualization features
+- Browser-based viewing and controls
+- System and planet display options
+- Performance optimization
+
+### [Chapter 6: Exporting Applications](docs/exporting_applications.md)
+- Creating standalone executables (Windows/macOS)
+- iOS Progressive Web App generation
+- Distribution and sharing options
+- Platform-specific considerations
+- Offline functionality
+
+### [Chapter 7: Data Structure & Schema](docs/data_structure_guide.md)
+- JSON data format overview
+- Schema validation and requirements
+- Migration between data formats
+- Backup and recovery procedures
+- Custom field management
+
+### [Chapter 8: Troubleshooting & Support](docs/troubleshooting_guide.md)
+- Common issues and solutions
+- Log file analysis
+- Performance optimization
+- Data recovery procedures
+- Getting help and support
+
+## Quick Start (5 Minutes)
 
 1. **Install Python 3.10+** from [python.org](https://www.python.org/downloads/)
-2. **Open terminal/cmd in the Haven_Mdev folder**
-3. **Create virtual environment:**
+2. **Open terminal in Haven_Mdev folder**
+3. **Set up environment:**
    ```bash
    python -m venv .venv
-   ```
-4. **Activate it:**
-   - Windows: `.venv\Scripts\activate`
-   - Mac/Linux: `source .venv/bin/activate`
-5. **Install dependencies:**
-   ```bash
+   source .venv/bin/activate  # macOS/Linux
+   # or .venv\Scripts\activate on Windows
    pip install -r config/requirements.txt
    ```
-6. **Launch Control Room:**
-   - Windows (no console): Double-click `scripts/Haven Control Room.pyw`
-   - Windows (legacy): `Haven Control Room.bat`
-   - Mac/Linux: Double-click `haven_control_room_mac.command`
+4. **Launch Control Room:**
+   - Windows: Double-click `Haven Control Room.bat`
+   - macOS: Double-click `haven_control_room_mac.command`
+   - Linux: `python src/control_room.py`
 
-## What You Can Do
+5. **Add your first system:**
+   - Click "🛰️ Launch System Entry (Wizard)"
+   - Fill in system details and planets
+   - Click "💾 Finish & Save"
 
-- **System Entry GUI**: Add/edit star systems with coordinates and custom fields
-- **3D Galaxy Map**: Generate interactive Three.js visualizations (opens in browser)
-- **Data Management**: All data stored in `data/data.json` with schema validation
-- **Export Standalone App**: Build a single-file Windows EXE or a macOS app (Build Kit) from the Control Room
+6. **Generate your map:**
+   - Click "🗺️ Generate Map"
+   - Click "🌐 Open Latest Map" to view in browser
 
-### Recommended entry flow
+## Key Features
 
-- Use the two‑page System Entry Wizard for adding complete star systems with planets and moons:
-   - From Control Room: click “Launch System Entry (Wizard)”
-   - Standalone: `python src/system_entry_wizard.py`
-- The classic single‑page UI is still available as “Launch Classic (Phase 1)” for reference.
-   - See `docs/system_entry_wizard_guide.md` for tips.
+- **📊 Complete Data Entry**: Two-page wizard for systems, planets, and moons with full metadata
+- **🌌 Interactive 3D Maps**: Touch-optimized Three.js visualizations with galaxy and system views
+- **📱 Cross-Platform**: Desktop GUI + iOS PWA that installs to home screen
+- **🔧 Standalone Exports**: Create executable files for users without Python
+- **💾 Local Storage**: All data stored locally with automatic backups
+- **🎨 Modern UI**: Glassmorphic design with customizable themes
+- **📋 Schema Validation**: Ensures data integrity and consistency
+- **🔄 Migration Support**: Handles legacy data formats automatically
 
-### Control Room — Full Guide
+## System Requirements
 
-For an in-depth manual of all features, workflows, exports, and troubleshooting, see:
-- `docs/Comprehensive_User_Guide.md` (highly detailed, with visuals)
+- **Python 3.10+** (with pip)
+- **Web browser** with WebGL support (Chrome, Firefox, Safari, Edge)
+- **4GB RAM** recommended for large datasets
+- **2GB free disk space** for dependencies and generated files
 
 ## File Structure
 
-- `data/` — Your star system data (`data.json`)
-- `dist/` — Generated maps and built executables
-- `logs/` — Application and map generation logs
-- `src/` — Source code (GUI, map generator, Control Room)
-- `config/` — Requirements, icons, settings
-- `docs/` — Full documentation
+```
+Haven_Mdev/
+├── src/                    # Python source code
+├── data/                   # Your star system data (data.json)
+├── dist/                   # Generated maps and exports
+├── docs/                   # Detailed documentation (chapters)
+├── logs/                   # Application logs
+├── photos/                 # System screenshots
+├── config/                 # Dependencies and build config
+├── scripts/                # Helper scripts and launchers
+├── themes/                 # UI theme files
+└── Archive-Dump/           # Legacy files and version history
+```
 
-## Troubleshooting
+## Data Storage
 
-- **Missing modules**: Activate venv and run `pip install -r config/requirements.txt`
-- **Map won't open**: Check `logs/` for errors; ensure data.json is valid
-- **Browser logs**: Map HTML includes a "Download Logs" button for diagnostics
+All your star system data is stored locally in `data/data.json`. The system automatically:
+- Creates backups before saving changes
+- Validates data against schema requirements
+- Migrates legacy formats when detected
+- Supports unlimited custom fields and metadata
 
-## Exporting and Sharing the App
+## Community & Support
 
-You can create standalone applications for users who don't have Python installed — now including **iOS support**!
+- **Documentation**: Comprehensive guides in the `docs/` folder
+- **Logs**: Check `logs/` folder for troubleshooting information
+- **Backups**: Legacy files archived in `Archive-Dump/` for reference
+- **Issues**: Review logs and documentation first, then check data integrity
 
-### Desktop (Windows/macOS)
+## Version History
 
-1. Open the Control Room.
-2. Click "Export App (EXE/.app)".
-3. Choose a platform (Windows, macOS, or iOS) and select an output folder.
-4. **Windows export** creates:
-   - `HavenControlRoom.exe` — runs offline, creates its own Data/Logs/dist next to itself
-   - A ZIP with the EXE and README for easy sharing
-5. **macOS export**:
-   - From Windows: creates a "Mac Build Kit" ZIP with build instructions
-   - On macOS: builds the actual `.app` bundle
-6. Older `.exe` files inside this repo are cleaned up automatically during export.
+This system has evolved through multiple phases:
+- **Phase 1**: Basic system entry with manual JSON editing
+- **Phase 2**: Two-page wizard with planet/moon support
+- **Current**: Full Control Room with exports, iOS support, and modern UI
 
-Notes:
-- Windows SmartScreen may warn about an unknown publisher on first run. Click "More info" → "Run anyway".
-- The standalone EXE/app stores data and outputs next to itself so it's fully portable.
+Legacy components are preserved in `Archive-Dump/` for reference and migration purposes.
 
-### iOS (iPhone/iPad)
+---
 
-1. Open the Control Room.
-2. Click "Export App (EXE/.app)".
-3. Choose **iOS** from the platform dropdown.
-4. Select output folder (e.g. Desktop\Haven_Exports).
-5. You'll get a ZIP bundle with:
-   - `Haven_Galaxy_iOS.html` — Complete PWA (Progressive Web App)
-   - Installation guide with step-by-step instructions
-
-Optional: choose “iOS (Offline)” in Export to embed the 3D library so it works with no internet at all.
-
-To enable true offline embedding, place a local copy of Three.js here before exporting:
-- `config/vendor/three.r128.min.js` (preferred)
-- or `config/vendor/three.min.js`
-
-Tip: After exporting, the offline HTML should be several hundred KB or more. If it’s ~50–60 KB, the embed file wasn’t found and it will still try online CDNs.
-   
-**To install on iOS:**
-1. Email the HTML file to your iOS device
-2. Open it in **Safari** (not Chrome)
-3. Tap Share → "Add to Home Screen"
-4. Launch from home screen like a native app!
-
-**iOS Features:**
-- 📱 Touch-optimized 3D galaxy map (pinch zoom, swipe rotate, tap systems)
-- 🧭 Two views: Galaxy view (all systems) and System view (star + planets)
-- ✏️ Full data entry form with all System Entry fields
-- 💾 Local storage — all data saved on device
-- 📤 Import/export JSON for backup and sharing
-- ✈️ Works completely offline after first load
-- 🏠 Installs to home screen like a native app
-
-The iOS PWA is a single HTML file (~40KB) that includes everything: 3D map viewer, data entry, local storage, and offline support. Share it via email, Dropbox, or any file transfer — recipients can open it in Safari and install to their home screen!
-
-Need more help? See `docs/README.md` for detailed instructions and advanced features.
+*Built for the Haven Galaxy community — explore, document, and share your discoveries!*
