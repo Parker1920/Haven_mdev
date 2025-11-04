@@ -77,13 +77,29 @@ def _setup_logging():
     sh.setFormatter(fmt)
     logger.addHandler(sh)
     try:
+        # Create logs and error_logs directories
         logs_dir().mkdir(exist_ok=True)
+        error_logs_path = logs_dir() / 'error_logs'
+        error_logs_path.mkdir(exist_ok=True)
+
         ts = datetime.now().strftime('%Y-%m-%d')
+
+        # Regular log file
         fh = RotatingFileHandler(logs_dir() / f'control-room-{ts}.log', maxBytes=2_000_000, backupCount=5, encoding='utf-8')
         fh.setFormatter(fmt)
+        fh.setLevel(logging.INFO)
         logger.addHandler(fh)
-    except Exception:
-        pass
+
+        # Error-only log file
+        ts_full = datetime.now().strftime('%Y-%m-%d_%H%M%S')
+        error_fh = RotatingFileHandler(error_logs_path / f'control-room-errors-{ts_full}.log', maxBytes=2_000_000, backupCount=5, encoding='utf-8')
+        error_fh.setFormatter(fmt)
+        error_fh.setLevel(logging.ERROR)
+        logger.addHandler(error_fh)
+
+        logger.info(f"Logging initialized. Error logs: {error_logs_path}")
+    except Exception as e:
+        print(f"Failed to setup logging: {e}", file=sys.stderr)
 
 
 _setup_logging()
@@ -111,12 +127,19 @@ class GlassCard(ctk.CTkFrame):
 
 class ControlRoom(ctk.CTk):
     def __init__(self):
-        super().__init__()
-        self.title("Haven Control Room")
-        self.geometry("980x700")
-        self.configure(fg_color=COLORS['bg_dark'])
-        self._frozen = getattr(sys, 'frozen', False)
-        self._build_ui()
+        try:
+            logging.info("Creating ControlRoom window...")
+            super().__init__()
+            self.title("Haven Control Room")
+            self.geometry("980x700")
+            self.configure(fg_color=COLORS['bg_dark'])
+            self._frozen = getattr(sys, 'frozen', False)
+            logging.info("Building UI...")
+            self._build_ui()
+            logging.info("ControlRoom initialization complete.")
+        except Exception as e:
+            logging.error(f"Error initializing ControlRoom: {e}", exc_info=True)
+            raise
 
     # -------------------------- UI --------------------------
     def _build_ui(self):
@@ -575,26 +598,57 @@ class ExportDialog(ctk.CTkToplevel):
 
 
 def main():
-    # Support dispatching alternate entries when frozen
-    parser = argparse.ArgumentParser(add_help=False)
-    parser.add_argument('--entry', choices=['control', 'system', 'map'])
-    parser.add_argument('--no-open', action='store_true')
-    args, unknown = parser.parse_known_args()
+    try:
+        logging.info("=== Haven Control Room Starting ===")
+        logging.info(f"Python: {sys.version}")
+        logging.info(f"Platform: {sys.platform}")
+        logging.info(f"Working directory: {Path.cwd()}")
 
-    entry = args.entry or 'control'
-    if entry == 'system':
-        # Run the System Entry UI as a separate process entrypoint
-        # Use runpy to invoke module as __main__
-        runpy.run_module('system_entry_wizard', run_name='__main__')
-        return
-    if entry == 'map':
-        # Forward args to map generator
-        sys.argv = ['Beta_VH_Map.py'] + (['--no-open'] if args.no_open else [])
-        runpy.run_module('Beta_VH_Map', run_name='__main__')
-        return
-    # Default: Control Room UI
-    app = ControlRoom()
-    app.mainloop()
+        # Support dispatching alternate entries when frozen
+        parser = argparse.ArgumentParser(add_help=False)
+        parser.add_argument('--entry', choices=['control', 'system', 'map'])
+        parser.add_argument('--no-open', action='store_true')
+        args, unknown = parser.parse_known_args()
+
+        entry = args.entry or 'control'
+        logging.info(f"Entry point: {entry}")
+
+        if entry == 'system':
+            # Run the System Entry UI as a separate process entrypoint
+            # Use runpy to invoke module as __main__
+            logging.info("Launching System Entry Wizard module...")
+            runpy.run_module('system_entry_wizard', run_name='__main__')
+            return
+        if entry == 'map':
+            # Forward args to map generator
+            logging.info("Launching Map Generator module...")
+            sys.argv = ['Beta_VH_Map.py'] + (['--no-open'] if args.no_open else [])
+            runpy.run_module('Beta_VH_Map', run_name='__main__')
+            return
+
+        # Default: Control Room UI
+        logging.info("Initializing Control Room UI...")
+        app = ControlRoom()
+        logging.info("Starting main event loop...")
+        app.mainloop()
+        logging.info("Control Room closed normally.")
+
+    except Exception as e:
+        logging.error(f"FATAL ERROR in main(): {e}", exc_info=True)
+        import traceback
+        traceback.print_exc()
+        # Try to show error dialog
+        try:
+            import tkinter as tk
+            from tkinter import messagebox
+            root = tk.Tk()
+            root.withdraw()
+            messagebox.showerror("Control Room Error",
+                                f"Failed to start Control Room:\n\n{e}\n\nCheck logs/error_logs/ for details.")
+            root.destroy()
+        except:
+            pass
+        sys.exit(1)
 
 
 if __name__ == '__main__':
