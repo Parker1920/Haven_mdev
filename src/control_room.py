@@ -134,6 +134,8 @@ class ControlRoom(ctk.CTk):
             self.geometry("980x700")
             self.configure(fg_color=COLORS['bg_dark'])
             self._frozen = getattr(sys, 'frozen', False)
+            # Data source: 'production' or 'testing'
+            self.data_source = ctk.StringVar(value='production')
             logging.info("Building UI...")
             self._build_ui()
             logging.info("ControlRoom initialization complete.")
@@ -169,6 +171,43 @@ class ControlRoom(ctk.CTk):
                      fg=qa_fg, hover=qa_hover, text_color=COLORS['text_primary']).pack(padx=20, pady=4, fill="x")
         self._mk_btn(sidebar, "🌐 Open Latest Map", self.open_latest_map,
                      fg=qa_fg, hover=qa_hover, text_color=COLORS['text_primary']).pack(padx=20, pady=4, fill="x")
+
+        ctk.CTkFrame(sidebar, height=1, fg_color=COLORS['text_secondary']).pack(fill="x", padx=20, pady=(12, 12))
+
+        # Data Source section
+        data_label = ctk.CTkLabel(sidebar, text="DATA SOURCE",
+                                  font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
+                                  text_color=COLORS['text_secondary'])
+        data_label.pack(padx=20, pady=(0, 8), anchor="w")
+
+        # Data source switch
+        data_switch_frame = ctk.CTkFrame(sidebar, fg_color="transparent")
+        data_switch_frame.pack(padx=20, pady=(0, 4), fill="x")
+
+        self.data_switch = ctk.CTkSwitch(
+            data_switch_frame,
+            text="Use Test Data",
+            variable=self.data_source,
+            onvalue="testing",
+            offvalue="production",
+            command=self._on_data_source_change,
+            font=ctk.CTkFont(family="Segoe UI", size=12),
+            text_color=COLORS['text_primary'],
+            fg_color=COLORS['accent_purple'],
+            progress_color=COLORS['warning']
+        )
+        self.data_switch.pack(side="left")
+
+        # Data source indicator
+        self.data_indicator = ctk.CTkLabel(
+            sidebar,
+            text="📊 Production Data (data/data.json)",
+            font=ctk.CTkFont(family="Segoe UI", size=10),
+            text_color=COLORS['success'],
+            wraplength=240,
+            justify="left"
+        )
+        self.data_indicator.pack(padx=20, pady=(4, 8), anchor="w")
 
         ctk.CTkFrame(sidebar, height=1, fg_color=COLORS['text_secondary']).pack(fill="x", padx=20, pady=(12, 12))
 
@@ -243,6 +282,22 @@ class ControlRoom(ctk.CTk):
         self.log_box.see('end')
         self.status_label.configure(text=msg)
 
+    def _on_data_source_change(self):
+        """Handle data source switch toggle"""
+        source = self.data_source.get()
+        if source == "testing":
+            self.data_indicator.configure(
+                text="🧪 Test Data (tests/stress_testing/TESTING.json)",
+                text_color=COLORS['warning']
+            )
+            self._log("Switched to TEST data source")
+        else:
+            self.data_indicator.configure(
+                text="📊 Production Data (data/data.json)",
+                text_color=COLORS['success']
+            )
+            self._log("Switched to PRODUCTION data source")
+
     def _confirm(self, title: str, msg: str) -> bool:
         return messagebox.askyesno(title, msg)
 
@@ -297,7 +352,15 @@ cd "{project_root()}"
         self._run_bg(run)
 
     def generate_map(self):
-        self._log("Generating map…")
+        # Determine which data file to use
+        source = self.data_source.get()
+        if source == "testing":
+            data_file = project_root() / "tests" / "stress_testing" / "TESTING.json"
+            self._log("Generating map with TEST data…")
+        else:
+            data_file = project_root() / "data" / "data.json"
+            self._log("Generating map with PRODUCTION data…")
+
         def run():
             try:
                 ts = datetime.now().strftime('%Y-%m-%d_%H%M%S')
@@ -305,12 +368,12 @@ cd "{project_root()}"
                 if self._frozen:
                     # Spawn same EXE to run the map generator entry
                     with open(logs_dir() / f'map-gen-{ts}.log', 'w', encoding='utf-8') as lf:
-                        cmd = [sys.executable, '--entry', 'map', '--no-open']
+                        cmd = [sys.executable, '--entry', 'map', '--no-open', '--data-file', str(data_file)]
                         proc = subprocess.run(cmd, cwd=str(project_root()), text=True, stdout=lf, stderr=lf)
                 else:
                     map_script = src_dir() / 'Beta_VH_Map.py'
                     with open(logs_dir() / f'map-gen-{ts}.log', 'w', encoding='utf-8') as lf:
-                        cmd = [sys.executable, str(map_script), '--no-open']
+                        cmd = [sys.executable, str(map_script), '--no-open', '--data-file', str(data_file)]
                         proc = subprocess.run(cmd, cwd=str(project_root()), text=True, stdout=lf, stderr=lf)
                 if proc.returncode == 0:
                     self._log("Map generation complete.")
