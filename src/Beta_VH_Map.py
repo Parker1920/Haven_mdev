@@ -1245,7 +1245,8 @@ THREEJS_TEMPLATE = r"""<!DOCTYPE html>
                 // In galaxy view, clicking a system navigates to system view
                 if (VIEW_MODE === 'galaxy' && object.userData.type === 'system') {
                     const systemName = object.userData.name || 'system';
-                    const safeName = systemName.toLowerCase().replace(/[^a-z0-9]+/g, '_');
+                    // Match Python safe_filename: preserve case, allow alphanumeric/space/dash/underscore, replace spaces with underscore
+                    const safeName = systemName.split('').map(c => /[a-zA-Z0-9 \-_]/.test(c) ? c : '_').join('').trim().replace(/ /g, '_');
                     window.location.href = `system_${safeName}.html`;
                 } else if (VIEW_MODE === 'system') {
                     // In system view, show details (don't allow clicks in galaxy view for non-regions)
