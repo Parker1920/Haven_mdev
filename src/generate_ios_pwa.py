@@ -584,13 +584,14 @@ window.HAVEN_OFFLINE = true;
                 var s = document.createElement('script');
                 s.src = url; s.crossOrigin = 'anonymous'; s.onload = onload; s.onerror = onerror;
                 document.head.appendChild(s);
-                timeoutHandle = setTimeout(function() {{ onerror(new Error('timeout')); }}, timeoutMs || 10000);
+                // Reduced timeout for iOS - fail faster and try next CDN
+                timeoutHandle = setTimeout(function() {{ onerror(new Error('timeout')); }}, timeoutMs || 5000);
             }}
             function tryIndex(i) {{
                 if (i >= cdnList.length) {{
                     if (loading) {{
-                        loading.querySelector('p').textContent = 'ERROR: 3D Library Unavailable';
-                        setDetail('Unable to load 3D library. Use Retry or Skip Map. If opened from Mail preview, use Open in Safari.');
+                        loading.querySelector('p').textContent = 'NETWORK ISSUE';
+                        setDetail('iOS Tip: Check WiFi/cellular connection. Or tap "Skip Map" below to use data entry without 3D map.');
                         var spinner = loading.querySelector('.spinner'); if (spinner) spinner.style.display = 'none';
                         var retryBtn = document.getElementById('retry-btn'); var skipBtn = document.getElementById('skip-map-btn');
                         if (retryBtn) retryBtn.style.display = 'inline-block'; if (skipBtn) skipBtn.style.display = 'inline-block';
@@ -1331,9 +1332,35 @@ window.HAVEN_OFFLINE = true;
             }}
         }}
         
-        window.addEventListener('load', function() {{
+        // Initialize with timeout fallback for iOS
+        var initStarted = false;
+        function safeInit() {{
+            if (initStarted) return;
+            initStarted = true;
             initializeApp(false);
-        }});
+        }}
+
+        window.addEventListener('load', safeInit);
+
+        // iOS Safari fallback: if window.load doesn't fire within 3 seconds, try anyway
+        setTimeout(function() {{
+            if (!initStarted) {{
+                console.log('iOS fallback: forcing initialization');
+                safeInit();
+            }}
+        }}, 3000);
+
+        // Ultimate fallback: Hide loading screen after 6 seconds if still visible
+        // This ensures users never get permanently stuck
+        setTimeout(function() {{
+            var loading = document.getElementById('loading');
+            if (loading && loading.style.display !== 'none') {{
+                console.log('iOS emergency fallback: hiding loading screen');
+                loading.style.display = 'none';
+                // If we're here, show a toast to let user know they can try the skip button if needed
+                showToast('Loaded. If 3D map doesn\'t appear, use the skip button.', 4000);
+            }}
+        }}, 6000);
         
         // Retry button handler
         var retryBtn = document.getElementById('retry-btn');
