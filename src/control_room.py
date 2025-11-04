@@ -252,9 +252,19 @@ class ControlRoom(ctk.CTk):
                 else:
                     app = src_dir() / 'system_entry_wizard.py'
                     if sys.platform == 'darwin':
-                        # macOS: Use osascript to launch in foreground with proper permissions
-                        script = f'tell application "Terminal" to do script "cd {shlex.quote(str(project_root()))} && {shlex.quote(sys.executable)} {shlex.quote(str(app))}"'
-                        subprocess.Popen(['osascript', '-e', script])
+                        # macOS: Use 'open' command with pythonw to launch GUI properly
+                        # Create a temporary shell script to run the wizard
+                        import tempfile
+                        script_content = f'''#!/bin/bash
+cd "{project_root()}"
+"{sys.executable}" "{app}"
+'''
+                        fd, script_path = tempfile.mkstemp(suffix='.command', text=True)
+                        with open(fd, 'w') as f:
+                            f.write(script_content)
+                        import os
+                        os.chmod(script_path, 0o755)
+                        subprocess.Popen(['open', '-a', 'Terminal', script_path])
                     else:
                         cmd = [sys.executable, str(app)]
                         subprocess.Popen(cmd, cwd=str(project_root()))
