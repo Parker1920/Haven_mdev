@@ -2,6 +2,7 @@ from __future__ import annotations
 import sys
 import subprocess
 import threading
+import shlex
 from datetime import datetime
 from pathlib import Path
 import logging
@@ -250,8 +251,13 @@ class ControlRoom(ctk.CTk):
                     subprocess.Popen(cmd, cwd=str(project_root()))
                 else:
                     app = src_dir() / 'system_entry_wizard.py'
-                    cmd = [sys.executable, str(app)]
-                    subprocess.Popen(cmd, cwd=str(project_root()))
+                    if sys.platform == 'darwin':
+                        # macOS: Use osascript to launch in foreground with proper permissions
+                        script = f'tell application "Terminal" to do script "cd {shlex.quote(str(project_root()))} && {shlex.quote(sys.executable)} {shlex.quote(str(app))}"'
+                        subprocess.Popen(['osascript', '-e', script])
+                    else:
+                        cmd = [sys.executable, str(app)]
+                        subprocess.Popen(cmd, cwd=str(project_root()))
                 self._log("System Entry Wizard launched.")
             except Exception as e:
                 self._log(f"Launch failed: {e}")
