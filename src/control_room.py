@@ -145,8 +145,6 @@ class ControlRoom(ctk.CTk):
                      fg=qa_fg, hover=qa_hover, text_color=COLORS['text_primary']).pack(padx=20, pady=4, fill="x")
         self._mk_btn(sidebar, "🌐 Open Latest Map", self.open_latest_map,
                      fg=qa_fg, hover=qa_hover, text_color=COLORS['text_primary']).pack(padx=20, pady=4, fill="x")
-        self._mk_btn(sidebar, "📱 Generate iOS PWA", self.quick_export_ios,
-                     fg=qa_fg, hover=qa_hover, text_color=COLORS['text_primary']).pack(padx=20, pady=4, fill="x")
 
         ctk.CTkFrame(sidebar, height=1, fg_color=COLORS['text_secondary']).pack(fill="x", padx=20, pady=(12, 12))
 
@@ -495,161 +493,8 @@ class ControlRoom(ctk.CTk):
                     self._log(f"macOS export error: {e}")
             self._run_bg(run)
 
-    def _export_ios(self, output_dir: Path, offline: bool = False):
-        """Generate iOS Progressive Web App for Safari.
-        offline=True will embed three.js when available for full offline use."""
-        self._log(f"Generating iOS PWA{' (Offline)' if offline else ''} to: {output_dir}")
-        def run():
-            try:
-                from generate_ios_pwa import generate_ios_pwa
-                import tempfile, shutil
-                
-                # Generate PWA HTML with embedded data
-                output_dir.mkdir(parents=True, exist_ok=True)
-                pwa_html = output_dir / ('Haven_Galaxy_iOS_offline.html' if offline else 'Haven_Galaxy_iOS.html')
-                generate_ios_pwa(pwa_html, include_data=True, embed_three=offline)
-                
-                # Create a ZIP with the HTML and instructions
-                ts = datetime.now().strftime('%Y-%m-%d_%H%M%S')
-                temp_bundle = Path(tempfile.mkdtemp()) / ('Haven_iOS_Offline_Bundle' if offline else 'Haven_iOS_Bundle')
-                temp_bundle.mkdir(parents=True, exist_ok=True)
-                
-                # Copy the HTML
-                shutil.copy(pwa_html, temp_bundle / 'Haven_Galaxy_iOS.html')
-                
-                # Create iOS instructions
-                instructions = """# Haven Galaxy - iOS Installation Guide
-
-## What You're Getting
-This is a Progressive Web App (PWA) that works on iPhone/iPad via Safari.
-No App Store required - install directly to your home screen!
-
-## Features
-✨ 3D Galaxy Map - Touch-optimized map viewer with pinch-zoom and swipe controls
-📝 Data Entry - Full system data entry form with all fields
-💾 Local Storage - All data saved securely on your device
-📤 Import/Export - Share data via JSON files
-🔒 Works Offline - {offline_note}
-🏠 Home Screen App - Installs like a native app
-
-## Installation Steps
-
-### Step 1: Open in Safari
-1. Email the HTML file to yourself
-2. On your iPhone/iPad, open the email
-3. Tap the HTML file to open it in Safari (not Chrome/Firefox)
-
-### Step 2: Add to Home Screen
-1. Tap the Share button (square with arrow pointing up)
-2. Scroll down and tap "Add to Home Screen"
-3. Name it "Haven Galaxy" (or whatever you like)
-4. Tap "Add"
-
-### Step 3: Launch
-1. Find the Haven Galaxy icon on your home screen
-2. Tap it to launch the app
-3. It will open full-screen without Safari's address bar
-
-## Using the App
-
-### Map View Tab
-- **Pinch**: Zoom in/out
-- **Swipe**: Rotate the view
-- **Tap system**: View details
-- **Reset button**: Return to default view
-- **Grid button**: Toggle coordinate grid
-
-### Data View Tab
-- **Add System**: Fill in the form and tap Save
-- **Edit System**: Tap a system in the list, then Edit
-- **Delete System**: Tap a system, then Delete
-- **Export JSON**: Download your data as a file
-- **Import JSON**: Load data from a file
-
-## Data Storage
-All your data is stored locally on your device using browser storage.
-Even if you clear Safari history, the app data persists.
-Use Export JSON regularly to back up your systems!
-
-## Troubleshooting
-
-**App won't install?**
-- Make sure you're using Safari (not Chrome)
-- Try restarting Safari and opening the file again
-
-**Data not saving?**
-- Check that Safari has permission to store data
-- Settings → Safari → Advanced → Website Data
-
-**Map not loading?**
-{map_note}
-
-**Touch controls not working?**
-- Make sure you're in the Map tab
-- Try double-tapping to wake the view
-
-## Sharing Data
-To share your systems with others:
-1. Go to Data tab
-2. Tap "Export JSON"
-3. Share the downloaded JSON file
-4. Recipients can tap "Import JSON" to load your data
-
-## Support
-For issues or questions, contact the Haven development team.
-
-Built with ❤️ for the Haven Galaxy community
-"""
-                offline_note = 'Fully offline (3D library embedded).' if offline else 'Use without internet connection after first load.'
-                map_note = ('- Works fully offline; no internet required.\n' if offline else '- Requires internet for first load (downloads 3D library)\n- After that, works completely offline\n')
-                (temp_bundle / 'iOS_INSTALLATION_GUIDE.txt').write_text(instructions.format(offline_note=offline_note, map_note=map_note), encoding='utf-8')
-                
-                # Create a quick README
-                readme = """Haven Galaxy iOS PWA
-===================
-
-Files:
-- Haven_Galaxy_iOS.html - The complete app (open in Safari on iOS){readme_tag}
-- iOS_INSTALLATION_GUIDE.txt - Step-by-step installation instructions
-
-Quick Start:
-1. Email Haven_Galaxy_iOS.html to your iOS device
-2. Open it in Safari
-3. Tap Share → Add to Home Screen
-4. Launch from home screen!
-
-The app includes a 3D galaxy map viewer and full data entry form.
-All data is stored locally on your device.
-"""
-                readme_tag = ' [OFFLINE]' if offline else ''
-                (temp_bundle / 'README.txt').write_text(readme.format(readme_tag=readme_tag), encoding='utf-8')
-                
-                # Create ZIP
-                zip_path = output_dir / (f'Haven_iOS_PWA_Offline_{ts}.zip' if offline else f'Haven_iOS_PWA_{ts}.zip')
-                shutil.make_archive(str(zip_path.with_suffix('')), 'zip', str(temp_bundle))
-                
-                self._log(f"✅ iOS PWA bundle created: {zip_path.name}")
-                self._log("📱 Send the HTML file to iOS users - they can install via Safari!")
-                
-                # Cleanup temp
-                try:
-                    shutil.rmtree(temp_bundle.parent, ignore_errors=True)
-                except:
-                    pass
-                    
-            except Exception as e:
-                self._log(f"iOS export error: {e}")
-                import traceback
-                self._log(traceback.format_exc())
-        self._run_bg(run)
-
-    def quick_export_ios(self):
-        """Quick action to generate iOS PWA bundle into dist/"""
-        try:
-            out = dist_dir()
-            self._export_ios(out, offline=False)
-        except Exception as e:
-            self._log(f"iOS quick export error: {e}")
+    # iOS PWA export removed - archived in Archive-Dump
+    # Use Haven_Mobile_Map.html instead (located in dist/ folder)
 
 
 class ExportDialog(ctk.CTkToplevel):
@@ -669,7 +514,7 @@ class ExportDialog(ctk.CTkToplevel):
         self.platform_var = ctk.StringVar(value='Windows')
         options = ctk.CTkOptionMenu(
             self,
-            values=['Windows', 'macOS', 'iOS', 'iOS (Offline)'],
+            values=['Windows', 'macOS'],
             variable=self.platform_var,
             fg_color=COLORS['glass'],
             button_color=COLORS['accent_cyan'],
@@ -710,10 +555,6 @@ class ExportDialog(ctk.CTkToplevel):
             self.parent._export_windows(out, zip_after=True)
         elif platform == 'macOS':
             self.parent._export_macos(out)
-        elif platform == 'iOS':
-            self.parent._export_ios(out)
-        else:  # iOS (Offline)
-            self.parent._export_ios(out, offline=True)
         self.destroy()
 
 
