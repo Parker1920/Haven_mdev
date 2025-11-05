@@ -12,7 +12,6 @@ import customtkinter as ctk
 from tkinter import messagebox, StringVar, filedialog
 import threading
 import time
-import uuid
 import logging
 import sys
 from logging.handlers import RotatingFileHandler
@@ -801,10 +800,8 @@ class SystemEntryWizard(ctk.CTk):
             return
         
         try:
-            # Generate unique ID using UUID instead of timestamp to prevent collisions
-            unique_id = uuid.uuid4().hex[:8].upper()
             system_data = {
-                "id": f"SYS_{self.region.upper().replace(' ', '_')}_{unique_id}",
+                "id": f"SYS_{self.region.upper().replace(' ', '_')}_{int(time.time())}",
                 "name": self.system_name,
                 "region": self.region,
                 "x": x,
@@ -838,8 +835,7 @@ class SystemEntryWizard(ctk.CTk):
                                 obj = {"_meta": existing.get('_meta', obj.get('_meta'))}
                                 for it in existing['data']:
                                     if isinstance(it, dict) and it.get('type') != 'region':
-                                        # Use UUID for fallback name instead of timestamp
-                                        name = (it.get('name') or f"SYS_{uuid.uuid4().hex[:8].upper()}")
+                                        name = (it.get('name') or f"SYS_{int(time.time())}")
                                         cp = dict(it); cp.pop('type', None)
                                         obj[name] = cp
                     except Exception:

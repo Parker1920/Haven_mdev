@@ -14,7 +14,6 @@ import runpy
 import argparse
 
 from common.paths import project_root, data_dir, logs_dir, dist_dir, config_dir, docs_dir, src_dir
-from common.progress import ProgressDialog, IndeterminateProgressDialog
 
 # Theme and colors (load from themes/haven_theme.json if available)
 THEMES = {
@@ -353,7 +352,6 @@ cd "{project_root()}"
         self._run_bg(run)
 
     def generate_map(self):
-        """Generate the 3D star map with progress indicator."""
         # Determine which data file to use
         source = self.data_source.get()
         if source == "testing":
@@ -363,21 +361,10 @@ cd "{project_root()}"
             data_file = project_root() / "data" / "data.json"
             self._log("Generating map with PRODUCTION data…")
 
-        # Show progress dialog
-        progress = IndeterminateProgressDialog(
-            self,
-            "Generating Map",
-            "Preparing map data..."
-        )
-
         def run():
             try:
                 ts = datetime.now().strftime('%Y-%m-%d_%H%M%S')
                 logs_dir().mkdir(exist_ok=True)
-
-                # Update progress message
-                self.after(100, lambda: progress.set_message("Generating 3D visualization..."))
-
                 if self._frozen:
                     # Spawn same EXE to run the map generator entry
                     with open(logs_dir() / f'map-gen-{ts}.log', 'w', encoding='utf-8') as lf:
@@ -388,18 +375,12 @@ cd "{project_root()}"
                     with open(logs_dir() / f'map-gen-{ts}.log', 'w', encoding='utf-8') as lf:
                         cmd = [sys.executable, str(map_script), '--no-open', '--data-file', str(data_file)]
                         proc = subprocess.run(cmd, cwd=str(project_root()), text=True, stdout=lf, stderr=lf)
-
-                # Close progress dialog
-                self.after(0, progress.close_dialog)
-
                 if proc.returncode == 0:
-                    self._log("✓ Map generation complete.")
+                    self._log("Map generation complete.")
                 else:
-                    self._log(f"✗ Map generation failed (exit {proc.returncode}). See logs.")
+                    self._log(f"Map generation failed (exit {proc.returncode}). See logs.")
             except Exception as e:
-                self.after(0, progress.close_dialog)
                 self._log(f"Map generation error: {e}")
-
         self._run_bg(run)
 
     def open_latest_map(self):
