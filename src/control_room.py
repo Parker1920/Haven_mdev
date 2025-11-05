@@ -18,6 +18,8 @@ from common.paths import project_root, data_dir, logs_dir, dist_dir, config_dir,
 from common.progress import ProgressDialog, IndeterminateProgressDialog
 from common.theme import COLORS, load_theme_colors, THEMES
 from common.constants import UIConstants, ServerConstants
+from common.backup_manager import BackupManager
+from common.backup_ui import BackupDialog
 
 # Apply theme
 ctk.set_appearance_mode("dark")
@@ -230,6 +232,8 @@ class ControlRoom(ctk.CTk):
         self._mk_btn(sidebar, "🧭 Logs Folder", lambda: self.open_path(logs_dir()),
                      fg="#1e3a5f", hover="#2a4a7c", text_color=COLORS['text_primary']).pack(padx=20, pady=4, fill="x")
         self._mk_btn(sidebar, "📖 Documentation", lambda: self.open_path(docs_dir()),
+                     fg="#1e3a5f", hover="#2a4a7c", text_color=COLORS['text_primary']).pack(padx=20, pady=4, fill="x")
+        self._mk_btn(sidebar, "💾 Backup History", self.show_backup_history,
                      fg="#1e3a5f", hover="#2a4a7c", text_color=COLORS['text_primary']).pack(padx=20, pady=4, fill="x")
 
         ctk.CTkFrame(sidebar, height=1, fg_color=COLORS['text_secondary']).pack(fill="x", padx=20, pady=(12, 12))
@@ -470,6 +474,23 @@ cd "{project_root()}"
             self._log(f"Opened: {target.name}")
         except Exception as e:
             self._log(f"Failed to open map: {e}")
+
+    def show_backup_history(self) -> None:
+        """Open backup management dialog.
+        
+        Displays all available backups with timestamps, descriptions, and sizes.
+        Allows user to view backup history and restore from any backup point.
+        """
+        try:
+            def on_restore():
+                """Callback after successful restore."""
+                self._log("Backup restored successfully. Reload data in wizard if needed.")
+            
+            dialog = BackupDialog(self, on_restore=on_restore)
+            self._log("Backup History dialog opened.")
+        except Exception as e:
+            self._log(f"Failed to open backup history: {e}")
+            messagebox.showerror("Error", f"Could not open backup dialog:\n{e}")
 
     def update_deps(self):
         if self._frozen:

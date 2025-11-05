@@ -48,6 +48,8 @@ from common.file_lock import FileLock
 from common.validation import validate_system_data, validate_coordinates
 from common.theme import COLORS, THEMES, load_theme_colors
 from common.constants import UIConstants, DataConstants, CoordinateLimits
+from common.backup_manager import BackupManager
+from common.undo_redo import get_undo_manager
 
 # Settings
 SETTINGS_FILE = project_root() / "settings.json"
@@ -455,6 +457,9 @@ class SystemEntryWizard(ctk.CTk):
         self.planets = []
         self.current_page = 1
         
+        # Undo/Redo manager
+        self.undo_manager = get_undo_manager()
+        
         # System fields (Page 1)
         self.system_name = ""
         self.region = ""
@@ -513,6 +518,11 @@ class SystemEntryWizard(ctk.CTk):
         
         # Show page 1 (after buttons are created)
         self.show_page(1)
+        
+        # Bind keyboard shortcuts for undo/redo
+        self.bind('<Control-z>', lambda e: self._on_undo())
+        self.bind('<Control-y>', lambda e: self._on_redo())
+        self.bind('<Control-shift-z>', lambda e: self._on_redo())
     
     def build_page1(self):
         # Scrollable form
@@ -880,10 +890,14 @@ class SystemEntryWizard(ctk.CTk):
                         return
                 obj[key] = system_data
 
-                # Save with backup
-                if self.data_file.exists():
-                    backup = self.data_file.with_suffix('.json.bak')
-                    shutil.copy2(self.data_file, backup)
+                # Create backup using BackupManager before write
+                backup_mgr = BackupManager(self.data_file)
+                backup_id = backup_mgr.create_backup(
+                    description=f"Auto-backup before saving system '{self.system_name}'",
+                    force=False
+                )
+                if backup_id:
+                    logging.info(f"Backup created: {backup_id}")
 
                 # Write data while holding the file lock
                 with open(self.data_file, 'w', encoding='utf-8') as f:
@@ -901,6 +915,31 @@ class SystemEntryWizard(ctk.CTk):
             logging.exception("Save failed")
             messagebox.showerror("Error", "Failed to save system!")
 
+    def _on_undo(self) -> None:
+        """Handle Ctrl+Z - Undo last operation.
+        
+        This is a placeholder for undo functionality. In future implementations,
+        this would restore previous page state from undo history.
+        """
+        if self.undo_manager.can_undo():
+            self.undo_manager.undo()
+            messagebox.showinfo("Undo", "Last operation undone.")
+            logging.info("Undo executed")
+        else:
+            messagebox.showinfo("Undo", "Nothing to undo.")
+
+    def _on_redo(self) -> None:
+        """Handle Ctrl+Y or Ctrl+Shift+Z - Redo last operation.
+        
+        This is a placeholder for redo functionality. In future implementations,
+        this would restore next page state from redo history.
+        """
+        if self.undo_manager.can_redo():
+            self.undo_manager.redo()
+            messagebox.showinfo("Redo", "Last operation redone.")
+            logging.info("Redo executed")
+        else:
+            messagebox.showinfo("Redo", "Nothing to redo.")
 
 
 def main():
