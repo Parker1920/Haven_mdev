@@ -1179,4 +1179,3 @@ function animate() {
 animate();
 
 console.log('Three.js Star Map initialized with', SYSTEM_DATA.length, 'objects');
-    </script>
