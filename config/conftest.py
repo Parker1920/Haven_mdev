@@ -12,8 +12,7 @@ from pathlib import Path
 import pytest
 
 # Add src and haven to path for imports
-# conftest.py is now in config/, so go up one level to project root
-project_root = Path(__file__).parent.parent
+project_root = Path(__file__).parent
 sys.path.insert(0, str(project_root / "src"))
 sys.path.insert(0, str(project_root / "haven"))
 sys.path.insert(0, str(project_root))

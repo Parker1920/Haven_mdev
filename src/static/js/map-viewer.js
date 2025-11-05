@@ -459,6 +459,15 @@ gridBtn.addEventListener('click', () => {
     minorGrid.visible = gridOn;
     majorGrid.visible = gridOn;
     gridBtn.textContent = gridOn ? 'Grid: On' : 'Grid: Off';
+
+    // Also toggle moon orbit lines with grid
+    if (moonRenderer && moonRenderer.moons) {
+        moonRenderer.moons.forEach(moon => {
+            if (moon.orbit_line) {
+                moon.orbit_line.visible = gridOn;
+            }
+        });
+    }
 });
 const autoRotateCheckbox = document.getElementById('toggle-autorotate');
 autoRotateCheckbox.addEventListener('change', () => { autoRotate = autoRotateCheckbox.checked; });
@@ -635,6 +644,56 @@ SYSTEM_DATA.forEach(item => {
         scene.add(sprite);
     }
 });
+
+// ========== Moon Visualization (System View Only) ==========
+let moonRenderer = null;
+
+if (VIEW_MODE === 'system' && typeof MoonRenderer !== 'undefined') {
+    console.log('[MOON] Initializing moon renderer...');
+    moonRenderer = new MoonRenderer(scene, camera, raycaster);
+
+    let moonCount = 0;
+
+    // Add moons from system data
+    SYSTEM_DATA.forEach(item => {
+        if (item.type === 'planet' && item.moons && Array.isArray(item.moons) && item.moons.length > 0) {
+            // Find the Three.js mesh for this planet
+            const planetMesh = objects.find(obj =>
+                obj.userData &&
+                obj.userData.type === 'planet' &&
+                obj.userData.name === item.name
+            );
+
+            if (planetMesh) {
+                console.log(`[MOON] Adding ${item.moons.length} moons to planet: ${item.name}`);
+                item.moons.forEach(moon => {
+                    try {
+                        moonRenderer.addMoon(planetMesh, moon, 0.15);
+                        moonCount++;
+
+                        // Add moon mesh to objects array for raycasting/interaction
+                        // Get the last added moon from moonRenderer
+                        if (moonRenderer.moons.length > 0) {
+                            const lastMoon = moonRenderer.moons[moonRenderer.moons.length - 1];
+                            if (lastMoon && lastMoon.mesh) {
+                                objects.push(lastMoon.mesh);
+                                console.log(`[MOON] Added ${moon.name || 'moon'} to interactive objects`);
+                            }
+                        }
+                    } catch (e) {
+                        console.error('[MOON] Failed to add moon:', moon.name || 'unnamed', e);
+                    }
+                });
+            } else {
+                console.warn('[MOON] Planet mesh not found for:', item.name);
+            }
+        }
+    });
+
+    console.log(`[MOON] Successfully added ${moonCount} moons to scene`);
+} else if (VIEW_MODE === 'system') {
+    console.warn('[MOON] MoonRenderer class not available - moon visualization disabled');
+}
 
 // Build region centroid meshes (galaxy view) - disabled unless explicitly enabled
 function buildRegionsFromSystems() {
@@ -1147,19 +1206,24 @@ function animate() {
     // Animate objects - data-driven based on config
     objects.forEach(obj => {
         if (!obj.userData || !obj.userData.type) return;
-        
+
         const objType = obj.userData.type;
-        
+
         // Rotate the main diamond/planet icons themselves
         if (VIEW_MODE === 'galaxy' && objType === 'region') {
             obj.rotation.y += 0.003;
         }
-        
+
         if (VIEW_MODE === 'system' && objType === 'planet') {
             obj.rotation.y += 0.003;
         }
     });
-    
+
+    // Update moon positions and orbits
+    if (moonRenderer) {
+        moonRenderer.update();
+    }
+
     // Update compass and scale HUD
     const dir = camera.getWorldDirection(new THREE.Vector3());
     const yaw = Math.atan2(dir.x, dir.z); // heading

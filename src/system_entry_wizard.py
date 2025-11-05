@@ -1,28 +1,6 @@
 """
-Haven System Entry Wizard - Two-Page System Management Interface
-
-Provides comprehensive UI for creating and editing galactic systems with full
-support for planets, moons, and space stations. Implements a two-page wizard
-pattern with extensive data validation and file handling.
-
-Features:
-    - System entry with coordinates (X, Y, Z)
-    - Nested planet management with moon support
-    - Space station positioning
-    - Photo attachment support
-    - Automatic file locking for concurrent access
-    - Data backup before modifications
-    - Support for system discovery photos
-    - Regional categorization and tagging
-
-Usage:
-    python src/system_entry_wizard.py
-
-Architecture:
-    - Page 1: System basic information
-    - Page 2: Planet/moon editor with nested UI
-    - Modal dialogs for planet and moon editing
-    - Real-time validation
+Haven System Entry - Two-Page Wizard with Planet/Moon Editors
+Complete star system entry with nested planets and moons
 """
 
 import json
@@ -46,27 +24,11 @@ ctk.set_default_color_theme("blue")
 from common.paths import data_path, logs_dir, project_root
 from common.file_lock import FileLock
 from common.validation import validate_system_data, validate_coordinates
-from common.theme import COLORS, THEMES, load_theme_colors
-from common.constants import UIConstants, DataConstants, CoordinateLimits
-from common.backup_manager import BackupManager
-from common.undo_redo import get_undo_manager
 
 # Settings
 SETTINGS_FILE = project_root() / "settings.json"
 
-def load_settings() -> dict:
-    """Load application settings from file.
-    
-    Reads settings.json from project root containing user preferences
-    like theme selection. Creates default settings if file doesn't exist.
-    
-    Returns:
-        Dictionary with settings (default: {"theme": "Dark"})
-        
-    Example:
-        >>> settings = load_settings()
-        >>> theme = settings.get("theme", "Dark")
-    """
+def load_settings():
     try:
         if SETTINGS_FILE.exists():
             with open(SETTINGS_FILE, 'r', encoding='utf-8') as f:
@@ -75,19 +37,7 @@ def load_settings() -> dict:
         logging.exception("Failed to load settings")
     return {"theme": "Dark"}
 
-
-def save_settings(data: dict) -> None:
-    """Save application settings to file.
-    
-    Persists user settings like theme selection to settings.json
-    in project root for restoration on next launch.
-    
-    Args:
-        data: Settings dictionary to save
-        
-    Example:
-        >>> save_settings({"theme": "Light"})
-    """
+def save_settings(data: dict):
     try:
         with open(SETTINGS_FILE, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=2)
@@ -97,10 +47,51 @@ def save_settings(data: dict) -> None:
 # Apply saved theme
 _settings = load_settings()
 _theme = _settings.get("theme", "Dark")
+THEMES = {"Dark": ("dark", "blue"), "Light": ("light", "blue"), "Cosmic": ("dark", "green"), "Haven (Cyan)": ("dark", "blue")}
 if _theme in THEMES:
     mode, color = THEMES[_theme]
     ctk.set_appearance_mode(mode)
     ctk.set_default_color_theme(color)
+
+def _load_theme_colors():
+    try:
+        theme_path = project_root() / 'themes' / 'haven_theme.json'
+        if theme_path.exists():
+            obj = json.loads(theme_path.read_text(encoding='utf-8'))
+            colors = obj.get('colors', {})
+            return {
+                'bg_dark': colors.get('bg_dark', '#0a0e27'),
+                'bg_card': colors.get('bg_card', '#141b3d'),
+                'accent_cyan': colors.get('accent_cyan', '#00d9ff'),
+                'accent_purple': colors.get('accent_purple', '#9d4edd'),
+                'accent_pink': colors.get('accent_pink', '#ff006e'),
+                'text_primary': colors.get('text_primary', '#ffffff'),
+                'text_secondary': colors.get('text_secondary', '#8892b0'),
+                'success': colors.get('success', '#00ff88'),
+                'warning': colors.get('warning', '#ffb703'),
+                'error': colors.get('error', '#ff006e'),
+                'glass': colors.get('glass', '#1a2342'),
+                'glow': colors.get('glow', '#00ffff'),
+            }
+    except Exception:
+        pass
+    return {
+        'bg_dark': '#0a0e27',
+        'bg_card': '#141b3d',
+        'accent_cyan': '#00d9ff',
+        'accent_purple': '#9d4edd',
+        'accent_pink': '#ff006e',
+        'text_primary': '#ffffff',
+        'text_secondary': '#8892b0',
+        'success': '#00ff88',
+        'warning': '#ffb703',
+        'error': '#ff006e',
+        'glass': '#1a2342',
+        'glow': '#00ffff'
+    }
+
+# Color palette
+COLORS = _load_theme_colors()
 
 # Logging setup
 def _setup_logging():
@@ -457,9 +448,6 @@ class SystemEntryWizard(ctk.CTk):
         self.planets = []
         self.current_page = 1
         
-        # Undo/Redo manager
-        self.undo_manager = get_undo_manager()
-        
         # System fields (Page 1)
         self.system_name = ""
         self.region = ""
@@ -518,17 +506,10 @@ class SystemEntryWizard(ctk.CTk):
         
         # Show page 1 (after buttons are created)
         self.show_page(1)
-        
-        # Bind keyboard shortcuts for undo/redo
-        self.bind('<Control-z>', lambda e: self._on_undo())
-        self.bind('<Control-y>', lambda e: self._on_redo())
-        self.bind('<Control-shift-z>', lambda e: self._on_redo())
     
     def build_page1(self):
         # Scrollable form
-        scroll = ctk.CTkScrollableFrame(self.page1_frame, fg_color="transparent", 
-                                       width=UIConstants.SCROLLABLE_FRAME_WIDTH, 
-                                       height=UIConstants.SCROLLABLE_FRAME_HEIGHT)
+        scroll = ctk.CTkScrollableFrame(self.page1_frame, fg_color="transparent", width=1300, height=700)
         scroll.pack(fill="both", expand=True)
         
         # Edit mode selector
@@ -854,33 +835,33 @@ class SystemEntryWizard(ctk.CTk):
             obj: dict = {"_meta": {"version": "3.0.0"}}
 
             # Use file locking to prevent concurrent access issues
-            with FileLock(self.data_file, timeout=DataConstants.FILELOCK_TIMEOUT):
+            with FileLock(self.data_file, timeout=10.0):
                 if self.data_file.exists():
                     with open(self.data_file, 'r', encoding='utf-8') as f:
                         try:
                             existing = json.load(f)
-                            # Already top-level map?
-                            if isinstance(existing, dict):
-                                vals = [v for k,v in existing.items() if k != '_meta']
-                                if vals and all(isinstance(v, dict) for v in vals) and any(('x' in v or 'y' in v or 'z' in v or 'planets' in v) for v in vals):
-                                    obj = existing
-                                elif isinstance(existing.get('systems'), dict):
-                                    # unwrap to top-level
-                                    obj = {"_meta": existing.get('_meta', obj.get('_meta'))}
-                                    for name, it in existing['systems'].items():
-                                        if isinstance(it, dict):
-                                            cp = dict(it); cp.setdefault('name', name)
-                                            obj[name] = cp
-                                elif isinstance(existing.get('data'), list):
-                                    obj = {"_meta": existing.get('_meta', obj.get('_meta'))}
-                                    for it in existing['data']:
-                                        if isinstance(it, dict) and it.get('type') != 'region':
-                                            # Use UUID for fallback name instead of timestamp
-                                            name = (it.get('name') or f"SYS_{uuid.uuid4().hex[:8].upper()}")
-                                            cp = dict(it); cp.pop('type', None)
-                                            obj[name] = cp
-                        except Exception:
-                            pass
+                        # Already top-level map?
+                        if isinstance(existing, dict):
+                            vals = [v for k,v in existing.items() if k != '_meta']
+                            if vals and all(isinstance(v, dict) for v in vals) and any(('x' in v or 'y' in v or 'z' in v or 'planets' in v) for v in vals):
+                                obj = existing
+                            elif isinstance(existing.get('systems'), dict):
+                                # unwrap to top-level
+                                obj = {"_meta": existing.get('_meta', obj.get('_meta'))}
+                                for name, it in existing['systems'].items():
+                                    if isinstance(it, dict):
+                                        cp = dict(it); cp.setdefault('name', name)
+                                        obj[name] = cp
+                            elif isinstance(existing.get('data'), list):
+                                obj = {"_meta": existing.get('_meta', obj.get('_meta'))}
+                                for it in existing['data']:
+                                    if isinstance(it, dict) and it.get('type') != 'region':
+                                        # Use UUID for fallback name instead of timestamp
+                                        name = (it.get('name') or f"SYS_{uuid.uuid4().hex[:8].upper()}")
+                                        cp = dict(it); cp.pop('type', None)
+                                        obj[name] = cp
+                    except Exception:
+                        pass
 
                 # Duplicate / overwrite prompt
                 key = self.system_name
@@ -890,14 +871,10 @@ class SystemEntryWizard(ctk.CTk):
                         return
                 obj[key] = system_data
 
-                # Create backup using BackupManager before write
-                backup_mgr = BackupManager(self.data_file)
-                backup_id = backup_mgr.create_backup(
-                    description=f"Auto-backup before saving system '{self.system_name}'",
-                    force=False
-                )
-                if backup_id:
-                    logging.info(f"Backup created: {backup_id}")
+                # Save with backup
+                if self.data_file.exists():
+                    backup = self.data_file.with_suffix('.json.bak')
+                    shutil.copy2(self.data_file, backup)
 
                 # Write data while holding the file lock
                 with open(self.data_file, 'w', encoding='utf-8') as f:
@@ -915,31 +892,6 @@ class SystemEntryWizard(ctk.CTk):
             logging.exception("Save failed")
             messagebox.showerror("Error", "Failed to save system!")
 
-    def _on_undo(self) -> None:
-        """Handle Ctrl+Z - Undo last operation.
-        
-        This is a placeholder for undo functionality. In future implementations,
-        this would restore previous page state from undo history.
-        """
-        if self.undo_manager.can_undo():
-            self.undo_manager.undo()
-            messagebox.showinfo("Undo", "Last operation undone.")
-            logging.info("Undo executed")
-        else:
-            messagebox.showinfo("Undo", "Nothing to undo.")
-
-    def _on_redo(self) -> None:
-        """Handle Ctrl+Y or Ctrl+Shift+Z - Redo last operation.
-        
-        This is a placeholder for redo functionality. In future implementations,
-        this would restore next page state from redo history.
-        """
-        if self.undo_manager.can_redo():
-            self.undo_manager.redo()
-            messagebox.showinfo("Redo", "Last operation redone.")
-            logging.info("Redo executed")
-        else:
-            messagebox.showinfo("Redo", "Nothing to redo.")
 
 
 def main():

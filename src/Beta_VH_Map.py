@@ -47,11 +47,9 @@ import subprocess
 import webbrowser
 from typing import List, Optional
 from pathlib import Path
-from common.moon_visualization import MOON_VISUALIZATION_JS
 
 import pandas as pd
 from typing import Tuple, Dict, Any
-from common.optimize_datasets import optimize_dataframe
 
 
 # ============================================================================
@@ -167,10 +165,6 @@ def load_systems(path: Path = DATA_FILE) -> pd.DataFrame:
     df["x"] = pd.to_numeric(df["x"], errors="coerce")
     df["y"] = pd.to_numeric(df["y"], errors="coerce")
     df["z"] = pd.to_numeric(df["z"], errors="coerce")
-    
-    # Optimize dataframe for memory efficiency and performance
-    df = optimize_dataframe(df)
-    
     logging.info(f"Loaded {len(df)} records from {path}")
     return df
 
@@ -461,7 +455,6 @@ def write_galaxy_and_system_views(df: pd.DataFrame, output: Path):
     """Generate Galaxy Overview (one point per system) and System View for each system.
 
     This function now uses external template files and copies static assets.
-    Includes moon visualization JavaScript for system views.
     """
     # Load the HTML template from external file
     template = load_template()
@@ -469,20 +462,16 @@ def write_galaxy_and_system_views(df: pd.DataFrame, output: Path):
     # Copy static files (CSS, JS) to the output directory
     copy_static_files(output.parent)
 
-    # Create moon visualization script block
-    moon_script = f"<script>{MOON_VISUALIZATION_JS}</script>"
-
-    # Galaxy overview (no moon visualization needed for galaxy view)
+    # Galaxy overview
     galaxy_data = prepare_galaxy_systems_data(df)
     html = template.replace("{{SYSTEMS_DATA}}", json.dumps(galaxy_data, indent=2))
     html = html.replace("{{VIEW_MODE}}", "galaxy")
     html = html.replace("{{REGION_NAME}}", "")
     html = html.replace("{{SYSTEM_META}}", json.dumps({}, indent=2))
-    html = html.replace("{{MOON_VISUALIZATION_SCRIPT}}", "")  # No moons in galaxy view
     output.write_text(html, encoding="utf-8")
     logging.info(f"Wrote Galaxy Overview: {output}")
 
-    # Per-system solar view pages (include moon visualization)
+    # Per-system solar view pages
     for _, row in df.iterrows():
         if row.get("type") == "region":
             continue
@@ -504,7 +493,6 @@ def write_galaxy_and_system_views(df: pd.DataFrame, output: Path):
         html = html.replace("{{VIEW_MODE}}", "system")
         html = html.replace("{{REGION_NAME}}", system_name)
         html = html.replace("{{SYSTEM_META}}", json.dumps(meta, indent=2))
-        html = html.replace("{{MOON_VISUALIZATION_SCRIPT}}", moon_script)  # Include moons in system view
         system_file.write_text(html, encoding="utf-8")
         logging.info(f"Wrote System View for {system_name}: {system_file.name}")
 

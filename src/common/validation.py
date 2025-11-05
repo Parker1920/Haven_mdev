@@ -19,8 +19,6 @@ Usage:
             print(f"Error: {error}")
 """
 
-from common.constants import CoordinateLimits, ValidationConstants
-
 import json
 import jsonschema
 from pathlib import Path
@@ -29,63 +27,6 @@ from typing import Tuple, List, Dict, Any
 
 # Cache the schema to avoid reloading
 _SCHEMA_CACHE = None
-
-
-def get_schema_validator() -> jsonschema.Draft7Validator:
-    """Get or create a Draft7Validator instance for the schema.
-
-    Returns:
-        jsonschema.Draft7Validator instance
-
-    Raises:
-        FileNotFoundError: If schema file doesn't exist
-    """
-    schema = load_schema()
-    return jsonschema.Draft7Validator(schema)
-
-
-def validate_with_schema(
-    data: Dict[str, Any], strict: bool = True
-) -> Tuple[bool, List[str]]:
-    """Comprehensive schema validation with detailed error reporting.
-
-    Args:
-        data: Data to validate
-        strict: If True, treat warnings as errors
-
-    Returns:
-        Tuple of (is_valid, error_list)
-    """
-    errors: List[str] = []
-    warnings: List[str] = []
-
-    try:
-        validator = get_schema_validator()
-
-        # Collect all validation errors
-        for error in validator.iter_errors(data):
-            error_path = " -> ".join(str(p) for p in error.path) if error.path else "root"
-            full_error = f"[{error.validator}] at '{error_path}': {error.message}"
-            errors.append(full_error)
-
-        # Additional custom validations
-        if "_meta" in data:
-            if "version" not in data["_meta"]:
-                warnings.append("Missing version in _meta")
-
-        if strict and warnings:
-            errors.extend(f"Warning (strict mode): {w}" for w in warnings)
-            return False, errors
-
-        return len(errors) == 0, errors
-
-    except jsonschema.SchemaError as e:
-        errors.append(f"Schema error: {e.message}")
-        return False, errors
-    except Exception as e:
-        errors.append(f"Unexpected validation error: {str(e)}")
-        return False, errors
-
 
 
 def load_schema() -> dict:
@@ -243,12 +184,12 @@ def validate_coordinates(x: float, y: float, z: float) -> Tuple[bool, str]:
     if not isinstance(z, (int, float)):
         return False, f"Z coordinate must be a number (got {type(z).__name__})"
 
-    if not (CoordinateLimits.X_MIN <= x <= CoordinateLimits.X_MAX):
-        return False, f"X coordinate must be between {CoordinateLimits.X_MIN} and {CoordinateLimits.X_MAX} (got {x})"
-    if not (CoordinateLimits.Y_MIN <= y <= CoordinateLimits.Y_MAX):
-        return False, f"Y coordinate must be between {CoordinateLimits.Y_MIN} and {CoordinateLimits.Y_MAX} (got {y})"
-    if not (CoordinateLimits.Z_MIN <= z <= CoordinateLimits.Z_MAX):
-        return False, f"Z coordinate must be between {CoordinateLimits.Z_MIN} and {CoordinateLimits.Z_MAX} (got {z})"
+    if not (-100 <= x <= 100):
+        return False, f"X coordinate must be between -100 and 100 (got {x})"
+    if not (-100 <= y <= 100):
+        return False, f"Y coordinate must be between -100 and 100 (got {y})"
+    if not (-25 <= z <= 25):
+        return False, f"Z coordinate must be between -25 and 25 (got {z})"
 
     return True, ""
 
@@ -376,13 +317,12 @@ def generate_validation_report(data: Dict[str, Any]) -> Dict[str, Any]:
     # Validate overall structure
     is_valid, errors = validate_data_file(data)
     report["valid"] = is_valid
-    report["errors"].extend(errors)  # type: ignore[union-attr]
+    report["errors"].extend(errors)  # type: ignore[attr-defined]
 
     if not is_valid:
         return report
 
     # Collect statistics
-    stats: Dict[str, Any] = report["stats"]  # type: ignore[assignment]
     for key, value in data.items():
         if key == "_meta":
             continue
@@ -390,33 +330,31 @@ def generate_validation_report(data: Dict[str, Any]) -> Dict[str, Any]:
         if not isinstance(value, dict):
             continue
 
-        stats["total_systems"] = int(stats["total_systems"]) + 1  # type: ignore[index]
+        report["stats"]["total_systems"] += 1
 
         # Count planets and moons
         if "planets" in value and isinstance(value["planets"], list):
-            stats["total_planets"] = int(stats["total_planets"]) + len(value["planets"])  # type: ignore[index]
+            report["stats"]["total_planets"] += len(value["planets"])
 
             for planet in value["planets"]:
                 if isinstance(planet, dict) and "moons" in planet:
                     if isinstance(planet["moons"], list):
-                        stats["total_moons"] = int(stats["total_moons"]) + len(planet["moons"])  # type: ignore[index]
+                        report["stats"]["total_moons"] += len(planet["moons"])
 
         # Collect regions
         if "region" in value:
-            regions: set = stats["regions"]  # type: ignore[assignment]
-            regions.add(value["region"])
+            report["stats"]["regions"].add(value["region"])
 
     # Convert set to sorted list
-    regions_set: set = stats["regions"]  # type: ignore[assignment]
-    stats["regions"] = sorted(regions_set)
+    report["stats"]["regions"] = sorted(report["stats"]["regions"])
 
     # Check for warnings
-    if stats["total_systems"] == 0:  # type: ignore[index]
-        report["warnings"].append("No systems found in data file")  # type: ignore[union-attr]
+    if report["stats"]["total_systems"] == 0:
+        report["warnings"].append("No systems found in data file")
 
-    if stats["total_systems"] > 10000:  # type: ignore[index]
-        report["warnings"].append(  # type: ignore[union-attr]
-            f"Large dataset ({stats['total_systems']} systems) may have performance issues"  # type: ignore[index]
+    if report["stats"]["total_systems"] > 10000:
+        report["warnings"].append(
+            f"Large dataset ({report['stats']['total_systems']} systems) may have performance issues"
         )
 
     return report

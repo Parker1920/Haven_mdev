@@ -5,10 +5,7 @@ Opens the map in a web server so JavaScript files load properly.
 The file:// protocol has CORS restrictions that prevent loading external scripts.
 
 Usage:
-    python scripts/utilities/serve_map.py
-    
-Or from project root:
-    python -m scripts.utilities.serve_map
+    python serve_map.py
 """
 
 import http.server
@@ -17,16 +14,9 @@ import webbrowser
 import sys
 from pathlib import Path
 
-# Add project root to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
-
-from common.constants import ServerConstants
-
 # Configuration
-PORT = ServerConstants.DEFAULT_PORT
-# Navigate up to project root, then to dist/
-PROJECT_ROOT = Path(__file__).parent.parent.parent
-DIRECTORY = PROJECT_ROOT / "dist"
+PORT = 8000
+DIRECTORY = Path(__file__).parent / "dist"
 
 def serve():
     """Start a simple HTTP server and open the map."""
