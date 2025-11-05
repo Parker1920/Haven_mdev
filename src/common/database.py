@@ -183,7 +183,7 @@ class HavenDatabase:
 
     # ========== QUERY METHODS ==========
 
-    def get_all_systems(self, region: Optional[str] = None) -> List[Dict]:
+    def get_all_systems(self, region: Optional[str] = None, include_planets: bool = False) -> List[Dict]:
         """
         Get all systems, optionally filtered by region
 
@@ -191,6 +191,7 @@ class HavenDatabase:
 
         Args:
             region: Optional region filter
+            include_planets: If True, loads planets and moons for each system (slower)
 
         Returns:
             List of system dictionaries
@@ -205,7 +206,39 @@ class HavenDatabase:
         else:
             cursor.execute("SELECT * FROM systems ORDER BY name")
 
-        return [dict(row) for row in cursor.fetchall()]
+        systems = [dict(row) for row in cursor.fetchall()]
+        
+        # Optionally load planets and moons
+        if include_planets:
+            for system in systems:
+                # Get planets
+                cursor.execute("""
+                    SELECT * FROM planets WHERE system_id = ?
+                """, (system['id'],))
+                
+                planets = []
+                for planet_row in cursor.fetchall():
+                    planet = dict(planet_row)
+                    
+                    # Get moons for this planet
+                    cursor.execute("""
+                        SELECT * FROM moons WHERE planet_id = ?
+                    """, (planet['id'],))
+                    planet['moons'] = [dict(moon_row) for moon_row in cursor.fetchall()]
+                    
+                    planets.append(planet)
+                
+                system['planets'] = planets
+                
+                # Get space station if exists
+                cursor.execute("""
+                    SELECT * FROM space_stations WHERE system_id = ?
+                """, (system['id'],))
+                station_row = cursor.fetchone()
+                if station_row:
+                    system['space_station'] = dict(station_row)
+        
+        return systems
 
     def get_systems_paginated(self, page: int = 1, per_page: int = 100,
                              region: Optional[str] = None) -> Dict[str, Any]:

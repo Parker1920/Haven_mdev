@@ -156,7 +156,7 @@ class ControlRoom(ctk.CTk):
             self.geometry("980x700")
             self.configure(fg_color=COLORS['bg_dark'])
             self._frozen = getattr(sys, 'frozen', False)
-            # Data source: 'production' or 'testing'
+            # Data source: 'production', 'testing', or 'load_test'
             self.data_source = ctk.StringVar(value='production')
 
             # Phase 2: Initialize data provider
@@ -254,23 +254,39 @@ class ControlRoom(ctk.CTk):
                                   text_color=COLORS['text_secondary'])
         data_label.pack(padx=20, pady=(0, 8), anchor="w")
 
-        # Data source switch
-        data_switch_frame = ctk.CTkFrame(sidebar, fg_color="transparent")
-        data_switch_frame.pack(padx=20, pady=(0, 4), fill="x")
+        # Data source dropdown (professional menu)
+        data_dropdown_frame = ctk.CTkFrame(sidebar, fg_color="transparent")
+        data_dropdown_frame.pack(padx=20, pady=(0, 4), fill="x")
 
-        self.data_switch = ctk.CTkSwitch(
-            data_switch_frame,
-            text="Use Test Data",
+        self.data_dropdown = ctk.CTkOptionMenu(
+            data_dropdown_frame,
             variable=self.data_source,
-            onvalue="testing",
-            offvalue="production",
+            values=["production", "testing", "load_test"],
             command=self._on_data_source_change,
-            font=ctk.CTkFont(family="Segoe UI", size=12),
+            font=ctk.CTkFont(family="Segoe UI", size=13),
+            dropdown_font=ctk.CTkFont(family="Segoe UI", size=12),
+            fg_color=COLORS['glass'],
+            button_color=COLORS['accent_purple'],
+            button_hover_color=COLORS['accent_cyan'],
+            dropdown_fg_color=COLORS['glass'],
+            dropdown_hover_color=COLORS['accent_purple'],
             text_color=COLORS['text_primary'],
-            fg_color=COLORS['accent_purple'],
-            progress_color=COLORS['warning']
+            width=240,
+            height=36,
+            corner_radius=8
         )
-        self.data_switch.pack(side="left")
+        self.data_dropdown.pack(fill="x")
+        
+        # Descriptive label for selected data source
+        self.data_description = ctk.CTkLabel(
+            data_dropdown_frame,
+            text=self._get_data_source_description(),
+            font=ctk.CTkFont(family="Segoe UI", size=10),
+            text_color=COLORS['text_secondary'],
+            wraplength=240,
+            justify="left"
+        )
+        self.data_description.pack(anchor="w", pady=(4, 0))
 
         # Phase 2: Enhanced data source indicator with backend info
         self.data_indicator_frame = ctk.CTkFrame(sidebar, fg_color="transparent")
@@ -396,10 +412,22 @@ class ControlRoom(ctk.CTk):
         source = self.data_source.get()
         if source == "testing":
             return "📊 Test Data (tests/stress_testing/TESTING.json)"
+        elif source == "load_test":
+            return "🔬 Load Test Database (data/haven_load_test.db)"
         elif PHASE2_ENABLED and self.current_backend == 'database':
             return "📊 Production Data (Database)"
         else:
             return "📊 Production Data (data/data.json)"
+    
+    def _get_data_source_description(self):
+        """Get descriptive text for current data source"""
+        source = self.data_source.get()
+        descriptions = {
+            "production": "Real production systems (11 systems)",
+            "testing": "Stress test data (500 systems)",
+            "load_test": "Billion-scale load test database"
+        }
+        return descriptions.get(source, "")
 
     def _log(self, msg: str):
         logging.info(msg)
@@ -410,15 +438,27 @@ class ControlRoom(ctk.CTk):
         self.log_box.see('end')
         self.status_label.configure(text=msg)
 
-    def _on_data_source_change(self):
-        """Handle data source switch toggle (Phase 2 enhanced)"""
+    def _on_data_source_change(self, choice=None):
+        """Handle data source dropdown change (Phase 2 enhanced)"""
         source = self.data_source.get()
+        
+        # Update description label
+        if hasattr(self, 'data_description'):
+            self.data_description.configure(text=self._get_data_source_description())
+        
+        # Update data indicator
         if source == "testing":
             self.data_indicator.configure(
                 text="🧪 Test Data (tests/stress_testing/TESTING.json)",
                 text_color=COLORS['warning']
             )
-            self._log("Switched to TEST data source")
+            self._log("Switched to TEST data source (500 systems)")
+        elif source == "load_test":
+            self.data_indicator.configure(
+                text="🔬 Load Test Database (data/haven_load_test.db)",
+                text_color=COLORS['accent_cyan']
+            )
+            self._log("Switched to LOAD TEST database (billion-scale)")
         else:
             self.data_indicator.configure(
                 text=self._get_data_indicator_text(),
@@ -504,7 +544,14 @@ cd "{project_root()}"
         source = self.data_source.get()
         if source == "testing":
             data_file = project_root() / "tests" / "stress_testing" / "TESTING.json"
-            self._log("Generating map with TEST data…")
+            self._log("Generating map with TEST data (500 systems)…")
+        elif source == "load_test":
+            data_file = project_root() / "data" / "haven_load_test.db"
+            # Check if load test database exists
+            if not data_file.exists():
+                self._log("⚠️ Load test database not found. Run generate_load_test_db.py first.")
+                return
+            self._log("Generating map with LOAD TEST database…")
         else:
             data_file = project_root() / "data" / "data.json"
             self._log("Generating map with PRODUCTION data…")

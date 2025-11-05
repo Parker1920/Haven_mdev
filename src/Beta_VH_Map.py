@@ -130,14 +130,40 @@ def load_systems(path: Path = DATA_FILE) -> pd.DataFrame:
     Load systems from the data file or database, supporting new and legacy formats.
     
     Phase 4: Now supports both JSON and database backends via data provider abstraction.
+    Load Test: Also supports direct database file paths (haven_load_test.db)
     
     Args:
-        path: Path to the data.json file (used only if Phase 4 disabled or database unavailable).
+        path: Path to data.json file OR database file (.db extension)
     Returns:
         DataFrame of normalized system/region records.
     Raises:
         ValueError: If the JSON format is not supported.
     """
+    # Check if path is a database file (.db extension)
+    if str(path).endswith('.db'):
+        logging.info(f"Loading systems from database file: {path}")
+        try:
+            from src.common.database import HavenDatabase
+            with HavenDatabase(str(path)) as db:
+                # Load with planets and moons for map visualization
+                systems = db.get_all_systems(include_planets=True)
+                records = []
+                for system_data in systems:
+                    records.append(normalize_record(system_data))
+            
+            df = pd.DataFrame(records)
+            for c in ("id", "name", "x", "y", "z", "region", "fauna", "flora", "sentinel", "materials", "base_location", "planets"):
+                if c not in df.columns:
+                    df[c] = None
+            df["x"] = pd.to_numeric(df["x"], errors="coerce")
+            df["y"] = pd.to_numeric(df["y"], errors="coerce")
+            df["z"] = pd.to_numeric(df["z"], errors="coerce")
+            logging.info(f"Loaded {len(df)} systems from database file (with planets and moons)")
+            return df
+        except Exception as e:
+            logging.error(f"Failed to load from database file: {e}")
+            raise
+    
     # Phase 4: Check if explicit test data path is provided (not the default DATA_FILE)
     # If a custom path is provided (like TESTING.json), always use that file directly
     # Compare absolute paths to handle both relative and absolute path arguments
