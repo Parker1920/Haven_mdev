@@ -7,7 +7,6 @@ from datetime import datetime
 from pathlib import Path
 import logging
 from logging.handlers import RotatingFileHandler
-from typing import Dict, Any, Optional
 
 import customtkinter as ctk
 from tkinter import messagebox, filedialog
@@ -16,18 +15,75 @@ import argparse
 
 from common.paths import project_root, data_dir, logs_dir, dist_dir, config_dir, docs_dir, src_dir
 from common.progress import ProgressDialog, IndeterminateProgressDialog
-from common.theme import COLORS, load_theme_colors, THEMES
-from common.constants import UIConstants, ServerConstants
-from common.backup_manager import BackupManager
-from common.backup_ui import BackupDialog
 
-# Apply theme
+# Phase 2: Database integration imports
+try:
+    from config.settings import (
+        USE_DATABASE, AUTO_DETECT_BACKEND,
+        get_data_provider, get_current_backend,
+        JSON_DATA_PATH, DATABASE_PATH,
+        SHOW_BACKEND_STATUS, SHOW_SYSTEM_COUNT,
+        ENABLE_DATABASE_STATS
+    )
+    PHASE2_ENABLED = True
+except ImportError:
+    # Fallback if Phase 2 modules not available
+    PHASE2_ENABLED = False
+    USE_DATABASE = False
+
+# Theme and colors (load from themes/haven_theme.json if available)
+THEMES = {
+    "Dark": ("dark", "blue"),
+    "Light": ("light", "blue"),
+    "Cosmic": ("dark", "green"),
+    "Haven (Cyan)": ("dark", "blue"),
+}
+
+def _load_theme_colors():
+    try:
+        theme_path = project_root() / 'themes' / 'haven_theme.json'
+        if theme_path.exists():
+            import json
+            obj = json.loads(theme_path.read_text(encoding='utf-8'))
+            colors = obj.get('colors', {})
+            return {
+                'bg_dark': colors.get('bg_dark', '#0a0e27'),
+                'bg_card': colors.get('bg_card', '#141b3d'),
+                'accent_cyan': colors.get('accent_cyan', '#00d9ff'),
+                'accent_purple': colors.get('accent_purple', '#9d4edd'),
+                'accent_pink': colors.get('accent_pink', '#ff006e'),
+                'text_primary': colors.get('text_primary', '#ffffff'),
+                'text_secondary': colors.get('text_secondary', '#8892b0'),
+                'success': colors.get('success', '#00ff88'),
+                'warning': colors.get('warning', '#ffb703'),
+                'error': colors.get('error', '#ff006e'),
+                'glass': colors.get('glass', '#1a2342'),
+                'glow': colors.get('glow', '#00ffff'),
+            }
+    except Exception:
+        pass
+    return {
+        'bg_dark': '#0a0e27',
+        'bg_card': '#141b3d',
+        'accent_cyan': '#00d9ff',
+        'accent_purple': '#9d4edd',
+        'accent_pink': '#ff006e',
+        'text_primary': '#ffffff',
+        'text_secondary': '#8892b0',
+        'success': '#00ff88',
+        'warning': '#ffb703',
+        'error': '#ff006e',
+        'glass': '#1a2342',
+        'glow': '#00ffff'
+    }
+
+COLORS = _load_theme_colors()
+
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
 
-def _setup_logging() -> None:
-    """Set up logging configuration with rotating file handlers."""
+def _setup_logging():
     logger = logging.getLogger()
     if logger.handlers:
         return
@@ -66,28 +122,7 @@ _setup_logging()
 
 
 class GlassCard(ctk.CTkFrame):
-    """Reusable glass-morphism card container widget.
-    
-    Provides a visually appealing card with frosted glass effect using
-    CustomTkinter. Used for grouping related content in the UI.
-    
-    Attributes:
-        title (str): Optional title displayed at top of card
-        
-    Example:
-        >>> card = GlassCard(parent, title="System Information")
-        >>> label = ctk.CTkLabel(card, text="Data goes here")
-        >>> label.pack(padx=20, pady=10)
-    """
-    
     def __init__(self, parent, title: str = "", **kwargs):
-        """Initialize glass card widget.
-        
-        Args:
-            parent: Parent widget
-            title: Optional title to display at top of card
-            **kwargs: Additional arguments passed to CTkFrame
-        """
         super().__init__(
             parent,
             fg_color=(COLORS['glass'], COLORS['bg_card']),
@@ -107,39 +142,23 @@ class GlassCard(ctk.CTkFrame):
 
 
 class ControlRoom(ctk.CTk):
-    """Main Haven Control Room application window.
-    
-    Provides central interface for managing galactic systems, viewing maps,
-    exporting applications, and managing system data. Supports both production
-    and test data sources with toggleable switching.
-    
-    Attributes:
-        data_source (ctk.StringVar): Current data source ('production' or 'testing')
-        _frozen (bool): Whether running as PyInstaller frozen executable
-        
-    Example:
-        >>> app = ControlRoom()
-        >>> app.mainloop()
-    """
-    
     def __init__(self):
-        """Initialize Haven Control Room window.
-        
-        Creates main window, sets up UI components, and initializes logging.
-        Dimensions are defined in UIConstants.
-        
-        Raises:
-            Exception: If UI building fails during initialization
-        """
         try:
             logging.info("Creating ControlRoom window...")
             super().__init__()
             self.title("Haven Control Room")
-            self.geometry(f"{UIConstants.WINDOW_WIDTH}x{UIConstants.WINDOW_HEIGHT}")
+            self.geometry("980x700")
             self.configure(fg_color=COLORS['bg_dark'])
             self._frozen = getattr(sys, 'frozen', False)
             # Data source: 'production' or 'testing'
             self.data_source = ctk.StringVar(value='production')
+
+            # Phase 2: Initialize data provider
+            self.data_provider = None
+            self.current_backend = 'json'
+            if PHASE2_ENABLED:
+                self._init_data_provider()
+
             logging.info("Building UI...")
             self._build_ui()
             logging.info("ControlRoom initialization complete.")
@@ -147,14 +166,19 @@ class ControlRoom(ctk.CTk):
             logging.error(f"Error initializing ControlRoom: {e}", exc_info=True)
             raise
 
+    def _init_data_provider(self):
+        """Initialize data provider based on configuration (Phase 2)"""
+        try:
+            self.data_provider = get_data_provider()
+            self.current_backend = get_current_backend()
+            logging.info(f"Data provider initialized: {self.current_backend}")
+        except Exception as e:
+            logging.error(f"Failed to initialize data provider: {e}")
+            self.data_provider = None
+            self.current_backend = 'json'
+
     # -------------------------- UI --------------------------
-    def _build_ui(self) -> None:
-        """Build complete control room user interface.
-        
-        Creates sidebar with buttons and controls, main content area with
-        information display, and status bar. Initializes all UI components
-        and connects event handlers.
-        """
+    def _build_ui(self):
         sidebar = ctk.CTkFrame(self, width=280, fg_color=COLORS['glass'], corner_radius=0)
         sidebar.pack(side="left", fill="y")
         sidebar.pack_propagate(False)
@@ -208,16 +232,43 @@ class ControlRoom(ctk.CTk):
         )
         self.data_switch.pack(side="left")
 
-        # Data source indicator
+        # Phase 2: Enhanced data source indicator with backend info
+        self.data_indicator_frame = ctk.CTkFrame(sidebar, fg_color="transparent")
+        self.data_indicator_frame.pack(padx=20, pady=(4, 8), fill="x")
+
         self.data_indicator = ctk.CTkLabel(
-            sidebar,
-            text="📊 Production Data (data/data.json)",
+            self.data_indicator_frame,
+            text=self._get_data_indicator_text(),
             font=ctk.CTkFont(family="Segoe UI", size=10),
             text_color=COLORS['success'],
             wraplength=240,
             justify="left"
         )
-        self.data_indicator.pack(padx=20, pady=(4, 8), anchor="w")
+        self.data_indicator.pack(anchor="w")
+
+        # Phase 2: Backend indicator (shows JSON vs Database)
+        if PHASE2_ENABLED and SHOW_BACKEND_STATUS:
+            self.backend_indicator = ctk.CTkLabel(
+                self.data_indicator_frame,
+                text=f"Backend: {self.current_backend.upper()}",
+                font=ctk.CTkFont(family="Segoe UI", size=9),
+                text_color=COLORS['text_secondary']
+            )
+            self.backend_indicator.pack(anchor="w")
+
+        # Phase 2: System count indicator
+        if PHASE2_ENABLED and SHOW_SYSTEM_COUNT and self.data_provider:
+            try:
+                count = self.data_provider.get_total_count()
+                self.count_indicator = ctk.CTkLabel(
+                    self.data_indicator_frame,
+                    text=f"Systems: {count:,}",
+                    font=ctk.CTkFont(family="Segoe UI", size=9),
+                    text_color=COLORS['accent_cyan']
+                )
+                self.count_indicator.pack(anchor="w")
+            except Exception as e:
+                logging.warning(f"Failed to get system count: {e}")
 
         ctk.CTkFrame(sidebar, height=1, fg_color=COLORS['text_secondary']).pack(fill="x", padx=20, pady=(12, 12))
 
@@ -232,8 +283,6 @@ class ControlRoom(ctk.CTk):
         self._mk_btn(sidebar, "🧭 Logs Folder", lambda: self.open_path(logs_dir()),
                      fg="#1e3a5f", hover="#2a4a7c", text_color=COLORS['text_primary']).pack(padx=20, pady=4, fill="x")
         self._mk_btn(sidebar, "📖 Documentation", lambda: self.open_path(docs_dir()),
-                     fg="#1e3a5f", hover="#2a4a7c", text_color=COLORS['text_primary']).pack(padx=20, pady=4, fill="x")
-        self._mk_btn(sidebar, "💾 Backup History", self.show_backup_history,
                      fg="#1e3a5f", hover="#2a4a7c", text_color=COLORS['text_primary']).pack(padx=20, pady=4, fill="x")
 
         ctk.CTkFrame(sidebar, height=1, fg_color=COLORS['text_secondary']).pack(fill="x", padx=20, pady=(12, 12))
@@ -250,6 +299,14 @@ class ControlRoom(ctk.CTk):
             # Export button opens a small modal to choose platform and output folder
             self._mk_btn(sidebar, "📦 Export App (EXE/.app)", self.open_export_dialog,
                          fg=COLORS['warning'], hover="#cc9602").pack(padx=20, pady=4, fill="x")
+            # System Test button opens interactive menu
+            self._mk_btn(sidebar, "🧪 System Test", self.show_system_test_menu,
+                         fg=COLORS['accent_cyan'], hover="#00b8cc").pack(padx=20, pady=4, fill="x")
+
+            # Phase 2: Database Statistics button (only show if database backend active)
+            if PHASE2_ENABLED and ENABLE_DATABASE_STATS and self.current_backend == 'database':
+                self._mk_btn(sidebar, "📊 Database Statistics", self.show_database_stats,
+                             fg=COLORS['accent_cyan'], hover="#00b8cc").pack(padx=20, pady=4, fill="x")
 
         # Content area
         content = ctk.CTkFrame(self, fg_color=COLORS['bg_dark'])
@@ -285,6 +342,16 @@ class ControlRoom(ctk.CTk):
         )
 
     # ----------------------- Utilities ----------------------
+    def _get_data_indicator_text(self):
+        """Get data indicator text based on current settings (Phase 2)"""
+        source = self.data_source.get()
+        if source == "testing":
+            return "📊 Test Data (tests/stress_testing/TESTING.json)"
+        elif PHASE2_ENABLED and self.current_backend == 'database':
+            return "📊 Production Data (Database)"
+        else:
+            return "📊 Production Data (data/data.json)"
+
     def _log(self, msg: str):
         logging.info(msg)
         self._log_ui(msg)
@@ -295,7 +362,7 @@ class ControlRoom(ctk.CTk):
         self.status_label.configure(text=msg)
 
     def _on_data_source_change(self):
-        """Handle data source switch toggle"""
+        """Handle data source switch toggle (Phase 2 enhanced)"""
         source = self.data_source.get()
         if source == "testing":
             self.data_indicator.configure(
@@ -305,10 +372,29 @@ class ControlRoom(ctk.CTk):
             self._log("Switched to TEST data source")
         else:
             self.data_indicator.configure(
-                text="📊 Production Data (data/data.json)",
+                text=self._get_data_indicator_text(),
                 text_color=COLORS['success']
             )
             self._log("Switched to PRODUCTION data source")
+
+        # Phase 2: Update system count if available
+        if PHASE2_ENABLED and hasattr(self, 'count_indicator') and SHOW_SYSTEM_COUNT:
+            try:
+                if source == "testing":
+                    # Count systems in test file
+                    import json
+                    test_file = project_root() / "tests" / "stress_testing" / "TESTING.json"
+                    if test_file.exists():
+                        with open(test_file, 'r', encoding='utf-8') as f:
+                            data = json.load(f)
+                        count = sum(1 for k, v in data.items() if k != "_meta" and isinstance(v, dict))
+                        self.count_indicator.configure(text=f"Systems: {count:,}")
+                else:
+                    if self.data_provider:
+                        count = self.data_provider.get_total_count()
+                        self.count_indicator.configure(text=f"Systems: {count:,}")
+            except Exception as e:
+                logging.warning(f"Failed to update system count: {e}")
 
     def _confirm(self, title: str, msg: str) -> bool:
         return messagebox.askyesno(title, msg)
@@ -325,35 +411,13 @@ class ControlRoom(ctk.CTk):
         except Exception as e:
             self._log(f"Failed to open path: {e}")
 
-    def _run_bg(self, target, *args, **kwargs) -> threading.Thread:
-        """Run function in background thread.
-        
-        Args:
-            target: Callable to run in background
-            *args: Positional arguments for target
-            **kwargs: Keyword arguments for target
-            
-        Returns:
-            threading.Thread: The started background thread
-            
-        Example:
-            >>> def long_operation():
-            ...     time.sleep(5)
-            ...     print("Done!")
-            >>> app._run_bg(long_operation)
-        """
+    def _run_bg(self, target, *args, **kwargs):
         t = threading.Thread(target=target, args=args, kwargs=kwargs, daemon=True)
         t.start()
         return t
 
     # ----------------------- Actions ------------------------
-    def launch_gui(self) -> None:
-        """Launch System Entry Wizard for editing systems.
-        
-        Opens the System Entry Wizard UI either as a subprocess (frozen)
-        or direct import (development mode) to ensure proper Tkinter
-        root window isolation.
-        """
+    def launch_gui(self):
         self._log("Launching System Entry Wizard…")
         def run():
             try:
@@ -385,22 +449,8 @@ cd "{project_root()}"
                 self._log(f"Launch failed: {e}")
         self._run_bg(run)
 
-    def generate_map(self) -> None:
-        """Generate the 3D star map with progress indicator.
-        
-        Creates an interactive Three.js 3D map from the current system data
-        (production or testing). Shows progress dialog and opens map in browser
-        upon completion.
-        
-        The map generation includes:
-        - System positioning from coordinate data
-        - 3D sphere visualization
-        - Grid overlay
-        - Camera controls and navigation
-        
-        Example:
-            >>> app.generate_map()  # Generates and opens dist/VH-Map.html
-        """
+    def generate_map(self):
+        """Generate the 3D star map with progress indicator."""
         # Determine which data file to use
         source = self.data_source.get()
         if source == "testing":
@@ -474,23 +524,6 @@ cd "{project_root()}"
             self._log(f"Opened: {target.name}")
         except Exception as e:
             self._log(f"Failed to open map: {e}")
-
-    def show_backup_history(self) -> None:
-        """Open backup management dialog.
-        
-        Displays all available backups with timestamps, descriptions, and sizes.
-        Allows user to view backup history and restore from any backup point.
-        """
-        try:
-            def on_restore():
-                """Callback after successful restore."""
-                self._log("Backup restored successfully. Reload data in wizard if needed.")
-            
-            dialog = BackupDialog(self, on_restore=on_restore)
-            self._log("Backup History dialog opened.")
-        except Exception as e:
-            self._log(f"Failed to open backup history: {e}")
-            messagebox.showerror("Error", f"Could not open backup dialog:\n{e}")
 
     def update_deps(self):
         if self._frozen:
@@ -678,32 +711,84 @@ cd "{project_root()}"
                     self._log(f"macOS export error: {e}")
             self._run_bg(run)
 
+    def show_system_test_menu(self):
+        """Open the System Test menu modal."""
+        SystemTestMenu(self)
+
+    def show_database_stats(self):
+        """Show database statistics in a dialog (Phase 2)"""
+        if not PHASE2_ENABLED or self.current_backend != 'database':
+            messagebox.showinfo("Info", "Database statistics only available in database mode.")
+            return
+
+        try:
+            from src.common.database import HavenDatabase
+
+            with HavenDatabase(str(DATABASE_PATH)) as db:
+                stats = db.get_statistics()
+
+            # Create stats dialog
+            dialog = ctk.CTkToplevel(self)
+            dialog.title("Database Statistics")
+            dialog.geometry("550x450")
+            dialog.configure(fg_color=COLORS['bg_dark'])
+
+            # Title
+            title = ctk.CTkLabel(
+                dialog,
+                text="📊 Database Statistics",
+                font=ctk.CTkFont(family="Segoe UI", size=20, weight="bold"),
+                text_color=COLORS['accent_cyan']
+            )
+            title.pack(pady=20)
+
+            # Stats frame
+            stats_frame = ctk.CTkScrollableFrame(dialog, fg_color=COLORS['glass'])
+            stats_frame.pack(fill="both", expand=True, padx=20, pady=(0, 20))
+
+            # Display stats
+            stats_text = f"""Total Systems: {stats['total_systems']:,}
+Total Planets: {stats['total_planets']:,}
+Total Moons: {stats['total_moons']:,}
+Total Space Stations: {stats['total_stations']:,}
+
+Regions: {', '.join(stats['regions'])}
+
+Database Size: {stats['database_size_mb']:.2f} MB
+Database Path: {DATABASE_PATH}"""
+
+            stats_label = ctk.CTkLabel(
+                stats_frame,
+                text=stats_text,
+                font=ctk.CTkFont(family="Consolas", size=12),
+                text_color=COLORS['text_primary'],
+                justify="left"
+            )
+            stats_label.pack(padx=20, pady=20)
+
+            # Close button
+            close_btn = ctk.CTkButton(
+                dialog,
+                text="Close",
+                command=dialog.destroy,
+                fg_color=COLORS['accent_purple'],
+                hover_color=COLORS['accent_pink']
+            )
+            close_btn.pack(pady=(0, 20))
+
+            dialog.transient(self)
+            dialog.grab_set()
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to load database statistics:\n{e}")
+            logging.error(f"Database stats error: {e}", exc_info=True)
+
     # iOS PWA export removed - archived in Archive-Dump
     # Use Haven_Mobile_Map.html instead (located in dist/ folder)
 
 
 class ExportDialog(ctk.CTkToplevel):
-    """Export application dialog.
-    
-    Modal dialog for selecting export platform (Windows/macOS) and output
-    directory. Handles selection and delegates to appropriate export method
-    on ControlRoom.
-    
-    Attributes:
-        platform_var (ctk.StringVar): Selected platform ('Windows' or 'macOS')
-        path_var (ctk.StringVar): Selected output directory path
-        
-    Example:
-        >>> dialog = ExportDialog(control_room)
-        # User selects platform and directory, export happens on OK
-    """
-    
     def __init__(self, parent: ControlRoom):
-        """Initialize export dialog.
-        
-        Args:
-            parent: Parent ControlRoom window
-        """
         super().__init__(parent)
         self.title("Export Application")
         self.geometry("480x260")
@@ -763,12 +848,233 @@ class ExportDialog(ctk.CTkToplevel):
         self.destroy()
 
 
-def main() -> None:
-    """Main entry point for Control Room application.
+class SystemTestMenu(ctk.CTkToplevel):
+    """Interactive System Test Menu - run tests from the Control Room."""
     
-    Handles argument parsing for alternate entry points (system, map)
-    and initializes the main UI or delegates to other modules.
-    """
+    def __init__(self, parent: ControlRoom):
+        super().__init__(parent)
+        self.title("🧪 System Test Menu")
+        self.geometry("700x650")
+        self.configure(fg_color=COLORS['bg_card'])
+        self.parent = parent
+        self.resizable(True, True)
+        self.grab_set()
+        
+        # Import test suite
+        from common.system_tests import get_test_suite
+        self.test_suite = get_test_suite(project_root())
+        self.selected_tests = []
+        self.test_checkboxes = {}
+        self.results_visible = False
+        
+        # ===================== HEADER =====================
+        header = ctk.CTkFrame(self, fg_color='transparent')
+        header.pack(fill="x", padx=20, pady=(20, 10))
+        
+        title = ctk.CTkLabel(header, text="🧪 System Test Suite",
+                            font=ctk.CTkFont(family="Segoe UI", size=18, weight="bold"),
+                            text_color=COLORS['accent_cyan'])
+        title.pack(anchor="w")
+        
+        desc = ctk.CTkLabel(header, text="Run validation, security, unit, and stress tests",
+                           font=ctk.CTkFont(family="Segoe UI", size=12),
+                           text_color=COLORS['text_secondary'])
+        desc.pack(anchor="w", pady=(4, 0))
+        
+        # ===================== TEST SELECTION =====================
+        select_frame = ctk.CTkFrame(self, fg_color='transparent')
+        select_frame.pack(fill="x", padx=20, pady=(10, 5))
+        
+        select_label = ctk.CTkLabel(select_frame, text="SELECT TESTS",
+                                   font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
+                                   text_color=COLORS['text_secondary'])
+        select_label.pack(anchor="w")
+        
+        # Quick selection buttons
+        quick_frame = ctk.CTkFrame(self, fg_color='transparent')
+        quick_frame.pack(fill="x", padx=20, pady=(5, 10))
+        
+        ctk.CTkButton(quick_frame, text="Select All", command=self._select_all, width=80,
+                     fg_color=COLORS['accent_cyan'], text_color=COLORS['bg_dark'],
+                     font=ctk.CTkFont(size=11, weight="bold")).pack(side="left", padx=4)
+        ctk.CTkButton(quick_frame, text="Clear All", command=self._clear_all, width=80,
+                     fg_color=COLORS['glass'],
+                     font=ctk.CTkFont(size=11, weight="bold")).pack(side="left", padx=4)
+        ctk.CTkButton(quick_frame, text="Validation Only", command=lambda: self._select_category("validation"),
+                     width=120, fg_color="#1e3a5f",
+                     font=ctk.CTkFont(size=11, weight="bold")).pack(side="left", padx=4)
+        ctk.CTkButton(quick_frame, text="Security Only", command=lambda: self._select_category("security"),
+                     width=120, fg_color="#5f1e3a",
+                     font=ctk.CTkFont(size=11, weight="bold")).pack(side="left", padx=4)
+        
+        # ===================== TEST SCROLLABLE LIST =====================
+        list_frame = ctk.CTkScrollableFrame(self, fg_color=COLORS['bg_dark'],
+                                           corner_radius=12, border_width=1,
+                                           border_color=COLORS['accent_cyan'])
+        list_frame.pack(fill="both", expand=True, padx=20, pady=(0, 15))
+        
+        # Organize tests by category
+        for category in sorted(self.test_suite.tests.keys()):
+            tests = self.test_suite.tests[category]
+            if not tests:
+                continue
+            
+            # Category header
+            cat_frame = ctk.CTkFrame(list_frame, fg_color='transparent')
+            cat_frame.pack(fill="x", padx=15, pady=(12, 8), anchor="w")
+            
+            icons = {"validation": "✅", "unit": "🔬", "security": "🔒", "stress": "⚡"}
+            icon = icons.get(category, "📝")
+            
+            cat_label = ctk.CTkLabel(cat_frame, text=f"{icon} {category.upper()} ({len(tests)})",
+                                    font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
+                                    text_color=COLORS['accent_cyan'])
+            cat_label.pack(anchor="w")
+            
+            # Tests in category
+            for test in tests:
+                test_frame = ctk.CTkFrame(list_frame, fg_color=COLORS['bg_card'], corner_radius=8)
+                test_frame.pack(fill="x", padx=15, pady=4)
+                
+                var = ctk.BooleanVar(value=False)
+                self.test_checkboxes[test.name] = (var, test)
+                
+                cb = ctk.CTkCheckBox(test_frame, text="", variable=var,
+                                    fg_color=COLORS['accent_cyan'],
+                                    checkmark_color=COLORS['bg_dark'],
+                                    border_color=COLORS['accent_cyan'])
+                cb.pack(side="left", padx=12, pady=10)
+                
+                info_frame = ctk.CTkFrame(test_frame, fg_color='transparent')
+                info_frame.pack(side="left", fill="both", expand=True, padx=0, pady=8)
+                
+                name_label = ctk.CTkLabel(info_frame, text=test.name,
+                                         font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
+                                         text_color=COLORS['text_primary'])
+                name_label.pack(anchor="w")
+                
+                desc_label = ctk.CTkLabel(info_frame, text=test.description,
+                                         font=ctk.CTkFont(family="Segoe UI", size=10),
+                                         text_color=COLORS['text_secondary'])
+                desc_label.pack(anchor="w", padx=(0, 10))
+        
+        # ===================== RESULTS AREA (Hidden by default) =====================
+        self.results_frame = ctk.CTkScrollableFrame(self, fg_color=COLORS['bg_dark'],
+                                                    corner_radius=12, border_width=1,
+                                                    border_color=COLORS['accent_cyan'])
+        self.results_frame.pack(fill="both", expand=True, padx=20, pady=(0, 15))
+        self.results_frame.pack_forget()  # Hidden initially
+        
+        # ===================== ACTION BUTTONS =====================
+        btn_frame = ctk.CTkFrame(self, fg_color='transparent')
+        btn_frame.pack(fill="x", padx=20, pady=(0, 20))
+        
+        ctk.CTkButton(btn_frame, text="Cancel", command=self.destroy, width=120,
+                     fg_color=COLORS['glass']).pack(side="right", padx=10)
+        
+        ctk.CTkButton(btn_frame, text="Run Tests", command=self._run_selected_tests, width=160,
+                     fg_color=COLORS['accent_cyan'], text_color=COLORS['bg_dark'],
+                     font=ctk.CTkFont(size=12, weight="bold")).pack(side="right", padx=10)
+    
+    def _select_all(self):
+        """Select all tests."""
+        for var, _ in self.test_checkboxes.values():
+            var.set(True)
+    
+    def _clear_all(self):
+        """Clear all selections."""
+        for var, _ in self.test_checkboxes.values():
+            var.set(False)
+    
+    def _select_category(self, category: str):
+        """Select all tests in a category."""
+        self._clear_all()
+        for name, (var, test) in self.test_checkboxes.items():
+            if test.category == category:
+                var.set(True)
+    
+    def _run_selected_tests(self):
+        """Run selected tests and display results."""
+        # Get selected tests
+        selected = [(name, test) for name, (var, test) in self.test_checkboxes.items()
+                   if var.get()]
+        
+        if not selected:
+            messagebox.showwarning("No Tests Selected", "Please select at least one test to run.")
+            return
+        
+        # Show results area, hide test list
+        self.results_frame.pack(fill="both", expand=True, padx=20, pady=(0, 15))
+        self.results_visible = True
+        
+        # Clear previous results
+        for widget in self.results_frame.winfo_children():
+            widget.destroy()
+        
+        # Run tests
+        passed = 0
+        failed = 0
+        
+        for name, test in selected:
+            # Result frame
+            result_frame = ctk.CTkFrame(self.results_frame, fg_color=COLORS['bg_card'], corner_radius=8)
+            result_frame.pack(fill="x", padx=15, pady=6)
+            
+            # Run test
+            success, output, error = test.run()
+            
+            if success:
+                passed += 1
+                status_icon = "✅"
+                status_color = COLORS['success']
+            else:
+                failed += 1
+                status_icon = "❌"
+                status_color = COLORS['error']
+            
+            # Header with status
+            header_frame = ctk.CTkFrame(result_frame, fg_color='transparent')
+            header_frame.pack(fill="x", padx=12, pady=(10, 4), anchor="w")
+            
+            status_label = ctk.CTkLabel(header_frame, text=f"{status_icon} {name}",
+                                       font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
+                                       text_color=status_color)
+            status_label.pack(anchor="w")
+            
+            # Output/Error
+            if output:
+                out_text = output[:300].strip()
+                out_label = ctk.CTkLabel(result_frame, text=out_text,
+                                        font=ctk.CTkFont(family="Consolas", size=9),
+                                        text_color=COLORS['text_secondary'],
+                                        justify="left", wraplength=600)
+                out_label.pack(anchor="w", padx=12, pady=(0, 4))
+            
+            if error:
+                err_text = error[:300].strip()
+                err_label = ctk.CTkLabel(result_frame, text=err_text,
+                                        font=ctk.CTkFont(family="Consolas", size=9),
+                                        text_color=COLORS['error'],
+                                        justify="left", wraplength=600)
+                err_label.pack(anchor="w", padx=12, pady=(0, 10))
+        
+        # Summary at top
+        summary_frame = ctk.CTkFrame(self.results_frame, fg_color='transparent')
+        summary_frame.pack(fill="x", padx=15, pady=(0, 15), anchor="w")
+        
+        summary_text = f"Results: {passed} passed, {failed} failed / {len(selected)} total"
+        summary_color = COLORS['success'] if failed == 0 else COLORS['warning']
+        
+        summary_label = ctk.CTkLabel(summary_frame, text=summary_text,
+                                    font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
+                                    text_color=summary_color)
+        summary_label.pack(anchor="w")
+        
+        # Log to parent
+        self.parent._log(f"System Test Results: {passed} passed, {failed} failed")
+
+
+def main():
     try:
         logging.info("=== Haven Control Room Starting ===")
         logging.info(f"Python: {sys.version}")
