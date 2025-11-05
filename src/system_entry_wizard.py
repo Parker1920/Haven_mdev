@@ -26,16 +26,22 @@ from common.file_lock import FileLock
 from common.validation import validate_system_data, validate_coordinates
 
 # Phase 3: Database integration imports
+# Ensure project root is in sys.path so config/ can be imported
+_proj_root = project_root()
+if str(_proj_root) not in sys.path:
+    sys.path.insert(0, str(_proj_root))
+
 try:
     from config.settings import (
         USE_DATABASE, get_data_provider, get_current_backend,
         SHOW_BACKEND_STATUS, SHOW_SYSTEM_COUNT
     )
     PHASE3_ENABLED = True
-except ImportError:
+except ImportError as e:
     # Fallback if Phase 3 modules not available
     PHASE3_ENABLED = False
     USE_DATABASE = False
+    print(f"[WARN] Phase 3 disabled - config.settings import failed: {e}", file=sys.stderr)
 
 # Settings
 SETTINGS_FILE = project_root() / "settings.json"

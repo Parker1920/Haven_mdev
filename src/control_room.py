@@ -17,6 +17,11 @@ from common.paths import project_root, data_dir, logs_dir, dist_dir, config_dir,
 from common.progress import ProgressDialog, IndeterminateProgressDialog
 
 # Phase 2: Database integration imports
+# Ensure project root is in sys.path so config/ can be imported
+_proj_root = project_root()
+if str(_proj_root) not in sys.path:
+    sys.path.insert(0, str(_proj_root))
+
 try:
     from config.settings import (
         USE_DATABASE, AUTO_DETECT_BACKEND,
@@ -26,10 +31,11 @@ try:
         ENABLE_DATABASE_STATS
     )
     PHASE2_ENABLED = True
-except ImportError:
+except ImportError as e:
     # Fallback if Phase 2 modules not available
     PHASE2_ENABLED = False
     USE_DATABASE = False
+    print(f"[WARN] Phase 2 disabled - config.settings import failed: {e}", file=sys.stderr)
 
 # Theme and colors (load from themes/haven_theme.json if available)
 THEMES = {
