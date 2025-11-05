@@ -840,28 +840,28 @@ class SystemEntryWizard(ctk.CTk):
                     with open(self.data_file, 'r', encoding='utf-8') as f:
                         try:
                             existing = json.load(f)
-                        # Already top-level map?
-                        if isinstance(existing, dict):
-                            vals = [v for k,v in existing.items() if k != '_meta']
-                            if vals and all(isinstance(v, dict) for v in vals) and any(('x' in v or 'y' in v or 'z' in v or 'planets' in v) for v in vals):
-                                obj = existing
-                            elif isinstance(existing.get('systems'), dict):
-                                # unwrap to top-level
-                                obj = {"_meta": existing.get('_meta', obj.get('_meta'))}
-                                for name, it in existing['systems'].items():
-                                    if isinstance(it, dict):
-                                        cp = dict(it); cp.setdefault('name', name)
-                                        obj[name] = cp
-                            elif isinstance(existing.get('data'), list):
-                                obj = {"_meta": existing.get('_meta', obj.get('_meta'))}
-                                for it in existing['data']:
-                                    if isinstance(it, dict) and it.get('type') != 'region':
-                                        # Use UUID for fallback name instead of timestamp
-                                        name = (it.get('name') or f"SYS_{uuid.uuid4().hex[:8].upper()}")
-                                        cp = dict(it); cp.pop('type', None)
-                                        obj[name] = cp
-                    except Exception:
-                        pass
+                            # Already top-level map?
+                            if isinstance(existing, dict):
+                                vals = [v for k,v in existing.items() if k != '_meta']
+                                if vals and all(isinstance(v, dict) for v in vals) and any(('x' in v or 'y' in v or 'z' in v or 'planets' in v) for v in vals):
+                                    obj = existing
+                                elif isinstance(existing.get('systems'), dict):
+                                    # unwrap to top-level
+                                    obj = {"_meta": existing.get('_meta', obj.get('_meta'))}
+                                    for name, it in existing['systems'].items():
+                                        if isinstance(it, dict):
+                                            cp = dict(it); cp.setdefault('name', name)
+                                            obj[name] = cp
+                                elif isinstance(existing.get('data'), list):
+                                    obj = {"_meta": existing.get('_meta', obj.get('_meta'))}
+                                    for it in existing['data']:
+                                        if isinstance(it, dict) and it.get('type') != 'region':
+                                            # Use UUID for fallback name instead of timestamp
+                                            name = (it.get('name') or f"SYS_{uuid.uuid4().hex[:8].upper()}")
+                                            cp = dict(it); cp.pop('type', None)
+                                            obj[name] = cp
+                        except Exception:
+                            pass
 
                 # Duplicate / overwrite prompt
                 key = self.system_name
