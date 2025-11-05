@@ -393,27 +393,11 @@ def prepare_single_system_solar(row: dict) -> List[dict]:
             if key not in ("x", "y", "z"):
                 item[key] = val
         data.append(item)
-        # Moons
-        moons = p.get("moons") or []
-        for j, m in enumerate(moons):
-            mname = m.get("name", f"Moon {j+1}")
-            mr = r + 0.6 + j * 0.25
-            mang = _angle_from_name(f"{sys_name}:{pname}:{mname}")
-            mx = mr * math.cos(mang)
-            mz = mr * math.sin(mang)
-            my = 0.0
-            mitem = {
-                "type": "moon",
-                "name": mname,
-                "region": region,
-                "x": mx,
-                "y": my,
-                "z": mz,
-            }
-            for key, val in m.items():
-                if key not in ("x", "y", "z"):
-                    mitem[key] = val
-            data.append(mitem)
+        
+        # Note: Moons are already nested in the planet's "moons" array above.
+        # The MoonRenderer class in the HTML template handles rendering them
+        # as orbiting objects. We do NOT create separate moon plot points.
+        # This prevents duplicate moon visualization (orbiting + standalone).
     return data
 
 
