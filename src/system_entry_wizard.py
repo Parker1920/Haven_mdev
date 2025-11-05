@@ -25,6 +25,18 @@ from common.paths import data_path, logs_dir, project_root
 from common.file_lock import FileLock
 from common.validation import validate_system_data, validate_coordinates
 
+# Phase 3: Database integration imports
+try:
+    from config.settings import (
+        USE_DATABASE, get_data_provider, get_current_backend,
+        SHOW_BACKEND_STATUS, SHOW_SYSTEM_COUNT
+    )
+    PHASE3_ENABLED = True
+except ImportError:
+    # Fallback if Phase 3 modules not available
+    PHASE3_ENABLED = False
+    USE_DATABASE = False
+
 # Settings
 SETTINGS_FILE = project_root() / "settings.json"
 
@@ -442,12 +454,18 @@ class SystemEntryWizard(ctk.CTk):
         self.title("Haven System Entry - Wizard")
         self.geometry("1400x900")
         self.configure(fg_color=COLORS['bg_dark'])
-        
+
         # Data
         self.data_file = data_path("data.json")
         self.planets = []
         self.current_page = 1
-        
+
+        # Phase 3: Initialize data provider
+        self.data_provider = None
+        self.current_backend = 'json'
+        if PHASE3_ENABLED:
+            self._init_data_provider()
+
         # System fields (Page 1)
         self.system_name = ""
         self.region = ""
@@ -456,9 +474,20 @@ class SystemEntryWizard(ctk.CTk):
         self.z_coord = ""
         # System-level simplified metadata
         self.attributes = ""
-        
+
         self.build_ui()
-    
+
+    def _init_data_provider(self):
+        """Initialize data provider based on configuration (Phase 3)"""
+        try:
+            self.data_provider = get_data_provider()
+            self.current_backend = get_current_backend()
+            logging.info(f"Wizard data provider initialized: {self.current_backend}")
+        except Exception as e:
+            logging.error(f"Failed to initialize data provider: {e}")
+            self.data_provider = None
+            self.current_backend = 'json'
+
     def build_ui(self):
         # Header
         header = ctk.CTkFrame(self, fg_color=COLORS['glass'], height=80)
@@ -469,7 +498,30 @@ class SystemEntryWizard(ctk.CTk):
                              font=ctk.CTkFont(family="Segoe UI", size=24, weight="bold"),
                              text_color=COLORS['accent_cyan'])
         title.pack(side="left", padx=30, pady=20)
-        
+
+        # Phase 3: Backend status indicators
+        if PHASE3_ENABLED:
+            status_frame = ctk.CTkFrame(header, fg_color="transparent")
+            status_frame.pack(side="right", padx=15)
+
+            if SHOW_BACKEND_STATUS:
+                backend_label = ctk.CTkLabel(status_frame,
+                                            text=f"Backend: {self.current_backend.upper()}",
+                                            font=ctk.CTkFont(family="Segoe UI", size=12),
+                                            text_color=COLORS['accent_cyan'])
+                backend_label.pack(side="top", pady=(10, 2))
+
+            if SHOW_SYSTEM_COUNT and self.data_provider:
+                try:
+                    count = self.data_provider.get_total_count()
+                    count_label = ctk.CTkLabel(status_frame,
+                                              text=f"Systems: {count:,}",
+                                              font=ctk.CTkFont(family="Segoe UI", size=12),
+                                              text_color=COLORS['text_secondary'])
+                    count_label.pack(side="top", pady=(2, 10))
+                except Exception as e:
+                    logging.warning(f"Failed to get system count: {e}")
+
         self.page_indicator = ctk.CTkLabel(header, text="Page 1 of 2: System Information",
                                            font=ctk.CTkFont(family="Segoe UI", size=14),
                                            text_color=COLORS['text_secondary'])
@@ -831,6 +883,44 @@ class SystemEntryWizard(ctk.CTk):
                 logging.error(f"System validation failed: {error}")
                 return
 
+            # Phase 3: Use data provider if available, otherwise fall back to JSON
+            if PHASE3_ENABLED and self.data_provider and self.current_backend == 'database':
+                self._save_system_via_provider(system_data)
+            else:
+                self._save_system_via_json(system_data)
+
+        except Exception:
+            logging.exception("Save failed")
+            messagebox.showerror("Error", "Failed to save system!")
+
+    def _save_system_via_provider(self, system_data: dict):
+        """Save system using data provider (Phase 3)"""
+        try:
+            # Check if system exists
+            existing = self.data_provider.get_system_by_name(system_data['name'])
+            if existing:
+                confirm = messagebox.askyesno("Overwrite", f"System '{system_data['name']}' exists. Overwrite?")
+                if not confirm:
+                    return
+
+            # Add or update system
+            self.data_provider.add_system(system_data)
+
+            messagebox.showinfo("Success", f"System '{self.system_name}' saved with {len(self.planets)} planet(s)!")
+
+            # Clear and reset
+            self.clear_page1()
+            self.planets = []
+            self.edit_system_var.set("(New System)")
+            self.show_page(1)
+
+        except Exception as e:
+            logging.exception(f"Failed to save via data provider: {e}")
+            messagebox.showerror("Error", f"Failed to save system: {e}")
+
+    def _save_system_via_json(self, system_data: dict):
+        """Save system using JSON file (backward compatibility)"""
+        try:
             # Load existing data with new schema preference (top-level map)
             obj: dict = {"_meta": {"version": "3.0.0"}}
 
@@ -840,28 +930,28 @@ class SystemEntryWizard(ctk.CTk):
                     with open(self.data_file, 'r', encoding='utf-8') as f:
                         try:
                             existing = json.load(f)
-                        # Already top-level map?
-                        if isinstance(existing, dict):
-                            vals = [v for k,v in existing.items() if k != '_meta']
-                            if vals and all(isinstance(v, dict) for v in vals) and any(('x' in v or 'y' in v or 'z' in v or 'planets' in v) for v in vals):
-                                obj = existing
-                            elif isinstance(existing.get('systems'), dict):
-                                # unwrap to top-level
-                                obj = {"_meta": existing.get('_meta', obj.get('_meta'))}
-                                for name, it in existing['systems'].items():
-                                    if isinstance(it, dict):
-                                        cp = dict(it); cp.setdefault('name', name)
-                                        obj[name] = cp
-                            elif isinstance(existing.get('data'), list):
-                                obj = {"_meta": existing.get('_meta', obj.get('_meta'))}
-                                for it in existing['data']:
-                                    if isinstance(it, dict) and it.get('type') != 'region':
-                                        # Use UUID for fallback name instead of timestamp
-                                        name = (it.get('name') or f"SYS_{uuid.uuid4().hex[:8].upper()}")
-                                        cp = dict(it); cp.pop('type', None)
-                                        obj[name] = cp
-                    except Exception:
-                        pass
+                            # Already top-level map?
+                            if isinstance(existing, dict):
+                                vals = [v for k,v in existing.items() if k != '_meta']
+                                if vals and all(isinstance(v, dict) for v in vals) and any(('x' in v or 'y' in v or 'z' in v or 'planets' in v) for v in vals):
+                                    obj = existing
+                                elif isinstance(existing.get('systems'), dict):
+                                    # unwrap to top-level
+                                    obj = {"_meta": existing.get('_meta', obj.get('_meta'))}
+                                    for name, it in existing['systems'].items():
+                                        if isinstance(it, dict):
+                                            cp = dict(it); cp.setdefault('name', name)
+                                            obj[name] = cp
+                                elif isinstance(existing.get('data'), list):
+                                    obj = {"_meta": existing.get('_meta', obj.get('_meta'))}
+                                    for it in existing['data']:
+                                        if isinstance(it, dict) and it.get('type') != 'region':
+                                            # Use UUID for fallback name instead of timestamp
+                                            name = (it.get('name') or f"SYS_{uuid.uuid4().hex[:8].upper()}")
+                                            cp = dict(it); cp.pop('type', None)
+                                            obj[name] = cp
+                        except Exception:
+                            pass
 
                 # Duplicate / overwrite prompt
                 key = self.system_name
@@ -879,18 +969,18 @@ class SystemEntryWizard(ctk.CTk):
                 # Write data while holding the file lock
                 with open(self.data_file, 'w', encoding='utf-8') as f:
                     json.dump(obj, f, indent=2)
-            
+
             messagebox.showinfo("Success", f"System '{self.system_name}' saved with {len(self.planets)} planet(s)!")
-            
+
             # Clear and reset
             self.clear_page1()
             self.planets = []
             self.edit_system_var.set("(New System)")
             self.show_page(1)
-            
-        except Exception:
-            logging.exception("Save failed")
-            messagebox.showerror("Error", "Failed to save system!")
+
+        except Exception as e:
+            logging.exception(f"Failed to save via JSON: {e}")
+            messagebox.showerror("Error", f"Failed to save system: {e}")
 
 
 
