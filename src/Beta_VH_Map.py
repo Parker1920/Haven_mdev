@@ -138,8 +138,15 @@ def load_systems(path: Path = DATA_FILE) -> pd.DataFrame:
     Raises:
         ValueError: If the JSON format is not supported.
     """
-    # Phase 4: Try to use data provider first
-    if PHASE4_ENABLED and USE_DATABASE:
+    # Phase 4: Check if explicit test data path is provided (not the default DATA_FILE)
+    # If a custom path is provided (like TESTING.json), always use that file directly
+    # Compare absolute paths to handle both relative and absolute path arguments
+    path_resolved = Path(path).resolve()
+    data_file_resolved = Path(DATA_FILE).resolve()
+    is_custom_path = path_resolved != data_file_resolved
+    
+    # Phase 4: Try to use data provider first (only if using default production data path)
+    if PHASE4_ENABLED and USE_DATABASE and not is_custom_path:
         try:
             provider = get_data_provider()
             backend = get_current_backend()
@@ -162,6 +169,10 @@ def load_systems(path: Path = DATA_FILE) -> pd.DataFrame:
         except Exception as e:
             logging.warning(f"[Phase 4] Failed to load from data provider, falling back to JSON: {e}")
             # Fall through to JSON loading below
+    
+    # If custom path provided (test data), log it explicitly
+    if is_custom_path:
+        logging.info(f"Loading systems from custom data file: {path}")
     
     # Fallback: Load from JSON file directly
     try:
