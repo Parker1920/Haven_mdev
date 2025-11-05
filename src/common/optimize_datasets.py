@@ -490,3 +490,59 @@ if __name__ == "__main__":
     
     print("\n" + "=" * 70)
     print("Optimization module ready!")
+
+
+def optimize_dataframe(df):
+    """
+    Optimize a pandas DataFrame for memory efficiency and performance.
+    
+    Converts data types to more efficient representations:
+    - Converts object columns with unique values < 50% to category type
+    - Converts int64 to int32 where possible
+    - Converts float64 to float32 where possible
+    - Skips columns with unhashable types (lists, dicts)
+    
+    Args:
+        df: pandas DataFrame to optimize
+        
+    Returns:
+        Optimized pandas DataFrame with reduced memory footprint
+    """
+    if df is None or df.empty:
+        return df
+    
+    import pandas as pd
+    
+    for col in df.columns:
+        col_type = df[col].dtype
+        
+        # Optimize object columns to category if few unique values
+        if col_type == 'object':
+            try:
+                num_unique = df[col].nunique()
+                num_total = len(df[col])
+                if num_unique / num_total < 0.5 and num_unique < 100:
+                    df[col] = df[col].astype('category')
+            except (TypeError, ValueError):
+                # Skip unhashable types (lists, dicts, etc.)
+                pass
+        
+        # Optimize integer columns
+        elif col_type == 'int64':
+            try:
+                max_val = df[col].max()
+                min_val = df[col].min()
+                if max_val < 2147483647 and min_val > -2147483648:
+                    df[col] = df[col].astype('int32')
+            except (ValueError, OverflowError):
+                pass
+        
+        # Optimize float columns
+        elif col_type == 'float64':
+            try:
+                df[col] = df[col].astype('float32')
+            except (ValueError, OverflowError):
+                pass
+    
+    return df
+
