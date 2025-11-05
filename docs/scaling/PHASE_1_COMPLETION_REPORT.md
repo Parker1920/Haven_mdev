@@ -361,7 +361,7 @@ py src/migration/json_to_sqlite.py --force
 
 ### Test Phase 1
 ```bash
-py test_phase1.py
+py tests/test_phase1.py
 ```
 
 ### Check Configuration

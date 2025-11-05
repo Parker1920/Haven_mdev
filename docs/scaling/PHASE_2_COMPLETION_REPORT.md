@@ -347,7 +347,7 @@ If Phase 2 modules unavailable:
 py -c "from config.settings import USE_DATABASE, get_current_backend; print(f'USE_DATABASE: {USE_DATABASE}'); print(f'Backend: {get_current_backend()}')"
 
 # Run Phase 2 test suite
-py test_phase2.py
+py tests/test_phase2.py
 
 # Launch Control Room
 py src/control_room.py
@@ -367,7 +367,7 @@ py src/control_room.py
 py -c "from config.settings import USE_DATABASE, get_current_backend; print(f'USE_DATABASE: {USE_DATABASE}'); print(f'Backend: {get_current_backend()}')"
 
 # 3. Run Phase 2 test suite again
-py test_phase2.py
+py tests/test_phase2.py
 
 # 4. Launch Control Room
 py src/control_room.py
@@ -411,7 +411,7 @@ The implementation maintains full backward compatibility while adding powerful n
 
 ### Run Phase 2 Tests
 ```bash
-py test_phase2.py
+py tests/test_phase2.py
 ```
 
 ### Launch Control Room (JSON Mode)

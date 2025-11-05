@@ -6,8 +6,9 @@ Tests that Beta_VH_Map.py can properly access data from both backends
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent))
-sys.path.insert(0, str(Path(__file__).parent / "src"))
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+sys.path.insert(0, str(project_root / "src"))
 
 def test_map_data_access():
     """Test map generator can access system data"""

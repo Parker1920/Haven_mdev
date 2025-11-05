@@ -13,8 +13,10 @@ if sys.platform == 'win32':
     except:
         pass
 
-# Add src to path
-sys.path.insert(0, str(Path(__file__).parent))
+# Add project root and src to path
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+sys.path.insert(0, str(project_root / "src"))
 
 print("="*70)
 print("PHASE 3 TESTING: WIZARD INTEGRATION")
@@ -22,8 +24,6 @@ print("="*70)
 
 print("\n[TEST 1] Import Wizard Module")
 try:
-    # Add src to path for imports
-    sys.path.insert(0, str(Path(__file__).parent / "src"))
     from system_entry_wizard import SystemEntryWizard, PHASE3_ENABLED
     print(f"  ✓ Wizard imported successfully")
     print(f"  ✓ Phase 3 enabled: {PHASE3_ENABLED}")
