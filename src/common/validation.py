@@ -19,6 +19,8 @@ Usage:
             print(f"Error: {error}")
 """
 
+from common.constants import CoordinateLimits, ValidationConstants
+
 import json
 import jsonschema
 from pathlib import Path
@@ -241,12 +243,12 @@ def validate_coordinates(x: float, y: float, z: float) -> Tuple[bool, str]:
     if not isinstance(z, (int, float)):
         return False, f"Z coordinate must be a number (got {type(z).__name__})"
 
-    if not (-100 <= x <= 100):
-        return False, f"X coordinate must be between -100 and 100 (got {x})"
-    if not (-100 <= y <= 100):
-        return False, f"Y coordinate must be between -100 and 100 (got {y})"
-    if not (-25 <= z <= 25):
-        return False, f"Z coordinate must be between -25 and 25 (got {z})"
+    if not (CoordinateLimits.X_MIN <= x <= CoordinateLimits.X_MAX):
+        return False, f"X coordinate must be between {CoordinateLimits.X_MIN} and {CoordinateLimits.X_MAX} (got {x})"
+    if not (CoordinateLimits.Y_MIN <= y <= CoordinateLimits.Y_MAX):
+        return False, f"Y coordinate must be between {CoordinateLimits.Y_MIN} and {CoordinateLimits.Y_MAX} (got {y})"
+    if not (CoordinateLimits.Z_MIN <= z <= CoordinateLimits.Z_MAX):
+        return False, f"Z coordinate must be between {CoordinateLimits.Z_MIN} and {CoordinateLimits.Z_MAX} (got {z})"
 
     return True, ""
 

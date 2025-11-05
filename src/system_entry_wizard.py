@@ -1,6 +1,28 @@
 """
-Haven System Entry - Two-Page Wizard with Planet/Moon Editors
-Complete star system entry with nested planets and moons
+Haven System Entry Wizard - Two-Page System Management Interface
+
+Provides comprehensive UI for creating and editing galactic systems with full
+support for planets, moons, and space stations. Implements a two-page wizard
+pattern with extensive data validation and file handling.
+
+Features:
+    - System entry with coordinates (X, Y, Z)
+    - Nested planet management with moon support
+    - Space station positioning
+    - Photo attachment support
+    - Automatic file locking for concurrent access
+    - Data backup before modifications
+    - Support for system discovery photos
+    - Regional categorization and tagging
+
+Usage:
+    python src/system_entry_wizard.py
+
+Architecture:
+    - Page 1: System basic information
+    - Page 2: Planet/moon editor with nested UI
+    - Modal dialogs for planet and moon editing
+    - Real-time validation
 """
 
 import json
@@ -24,11 +46,25 @@ ctk.set_default_color_theme("blue")
 from common.paths import data_path, logs_dir, project_root
 from common.file_lock import FileLock
 from common.validation import validate_system_data, validate_coordinates
+from common.theme import COLORS, THEMES, load_theme_colors
+from common.constants import UIConstants, DataConstants, CoordinateLimits
 
 # Settings
 SETTINGS_FILE = project_root() / "settings.json"
 
-def load_settings():
+def load_settings() -> dict:
+    """Load application settings from file.
+    
+    Reads settings.json from project root containing user preferences
+    like theme selection. Creates default settings if file doesn't exist.
+    
+    Returns:
+        Dictionary with settings (default: {"theme": "Dark"})
+        
+    Example:
+        >>> settings = load_settings()
+        >>> theme = settings.get("theme", "Dark")
+    """
     try:
         if SETTINGS_FILE.exists():
             with open(SETTINGS_FILE, 'r', encoding='utf-8') as f:
@@ -37,7 +73,19 @@ def load_settings():
         logging.exception("Failed to load settings")
     return {"theme": "Dark"}
 
-def save_settings(data: dict):
+
+def save_settings(data: dict) -> None:
+    """Save application settings to file.
+    
+    Persists user settings like theme selection to settings.json
+    in project root for restoration on next launch.
+    
+    Args:
+        data: Settings dictionary to save
+        
+    Example:
+        >>> save_settings({"theme": "Light"})
+    """
     try:
         with open(SETTINGS_FILE, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=2)
@@ -47,51 +95,10 @@ def save_settings(data: dict):
 # Apply saved theme
 _settings = load_settings()
 _theme = _settings.get("theme", "Dark")
-THEMES = {"Dark": ("dark", "blue"), "Light": ("light", "blue"), "Cosmic": ("dark", "green"), "Haven (Cyan)": ("dark", "blue")}
 if _theme in THEMES:
     mode, color = THEMES[_theme]
     ctk.set_appearance_mode(mode)
     ctk.set_default_color_theme(color)
-
-def _load_theme_colors():
-    try:
-        theme_path = project_root() / 'themes' / 'haven_theme.json'
-        if theme_path.exists():
-            obj = json.loads(theme_path.read_text(encoding='utf-8'))
-            colors = obj.get('colors', {})
-            return {
-                'bg_dark': colors.get('bg_dark', '#0a0e27'),
-                'bg_card': colors.get('bg_card', '#141b3d'),
-                'accent_cyan': colors.get('accent_cyan', '#00d9ff'),
-                'accent_purple': colors.get('accent_purple', '#9d4edd'),
-                'accent_pink': colors.get('accent_pink', '#ff006e'),
-                'text_primary': colors.get('text_primary', '#ffffff'),
-                'text_secondary': colors.get('text_secondary', '#8892b0'),
-                'success': colors.get('success', '#00ff88'),
-                'warning': colors.get('warning', '#ffb703'),
-                'error': colors.get('error', '#ff006e'),
-                'glass': colors.get('glass', '#1a2342'),
-                'glow': colors.get('glow', '#00ffff'),
-            }
-    except Exception:
-        pass
-    return {
-        'bg_dark': '#0a0e27',
-        'bg_card': '#141b3d',
-        'accent_cyan': '#00d9ff',
-        'accent_purple': '#9d4edd',
-        'accent_pink': '#ff006e',
-        'text_primary': '#ffffff',
-        'text_secondary': '#8892b0',
-        'success': '#00ff88',
-        'warning': '#ffb703',
-        'error': '#ff006e',
-        'glass': '#1a2342',
-        'glow': '#00ffff'
-    }
-
-# Color palette
-COLORS = _load_theme_colors()
 
 # Logging setup
 def _setup_logging():
@@ -509,7 +516,9 @@ class SystemEntryWizard(ctk.CTk):
     
     def build_page1(self):
         # Scrollable form
-        scroll = ctk.CTkScrollableFrame(self.page1_frame, fg_color="transparent", width=1300, height=700)
+        scroll = ctk.CTkScrollableFrame(self.page1_frame, fg_color="transparent", 
+                                       width=UIConstants.SCROLLABLE_FRAME_WIDTH, 
+                                       height=UIConstants.SCROLLABLE_FRAME_HEIGHT)
         scroll.pack(fill="both", expand=True)
         
         # Edit mode selector
@@ -835,7 +844,7 @@ class SystemEntryWizard(ctk.CTk):
             obj: dict = {"_meta": {"version": "3.0.0"}}
 
             # Use file locking to prevent concurrent access issues
-            with FileLock(self.data_file, timeout=10.0):
+            with FileLock(self.data_file, timeout=DataConstants.FILELOCK_TIMEOUT):
                 if self.data_file.exists():
                     with open(self.data_file, 'r', encoding='utf-8') as f:
                         try:

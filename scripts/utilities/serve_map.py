@@ -17,8 +17,13 @@ import webbrowser
 import sys
 from pathlib import Path
 
+# Add project root to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
+
+from common.constants import ServerConstants
+
 # Configuration
-PORT = 8000
+PORT = ServerConstants.DEFAULT_PORT
 # Navigate up to project root, then to dist/
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 DIRECTORY = PROJECT_ROOT / "dist"

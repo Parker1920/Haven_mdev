@@ -16,60 +16,10 @@ import argparse
 
 from common.paths import project_root, data_dir, logs_dir, dist_dir, config_dir, docs_dir, src_dir
 from common.progress import ProgressDialog, IndeterminateProgressDialog
+from common.theme import COLORS, load_theme_colors, THEMES
+from common.constants import UIConstants, ServerConstants
 
-# Theme and colors (load from themes/haven_theme.json if available)
-THEMES: Dict[str, tuple[str, str]] = {
-    "Dark": ("dark", "blue"),
-    "Light": ("light", "blue"),
-    "Cosmic": ("dark", "green"),
-    "Haven (Cyan)": ("dark", "blue"),
-}
-
-def _load_theme_colors() -> Dict[str, str]:
-    """Load theme colors from JSON configuration or use defaults.
-    
-    Returns:
-        Dictionary mapping color names to hex values
-    """
-    try:
-        theme_path = project_root() / 'themes' / 'haven_theme.json'
-        if theme_path.exists():
-            import json
-            obj = json.loads(theme_path.read_text(encoding='utf-8'))
-            colors = obj.get('colors', {})
-            return {
-                'bg_dark': colors.get('bg_dark', '#0a0e27'),
-                'bg_card': colors.get('bg_card', '#141b3d'),
-                'accent_cyan': colors.get('accent_cyan', '#00d9ff'),
-                'accent_purple': colors.get('accent_purple', '#9d4edd'),
-                'accent_pink': colors.get('accent_pink', '#ff006e'),
-                'text_primary': colors.get('text_primary', '#ffffff'),
-                'text_secondary': colors.get('text_secondary', '#8892b0'),
-                'success': colors.get('success', '#00ff88'),
-                'warning': colors.get('warning', '#ffb703'),
-                'error': colors.get('error', '#ff006e'),
-                'glass': colors.get('glass', '#1a2342'),
-                'glow': colors.get('glow', '#00ffff'),
-            }
-    except Exception:
-        pass
-    return {
-        'bg_dark': '#0a0e27',
-        'bg_card': '#141b3d',
-        'accent_cyan': '#00d9ff',
-        'accent_purple': '#9d4edd',
-        'accent_pink': '#ff006e',
-        'text_primary': '#ffffff',
-        'text_secondary': '#8892b0',
-        'success': '#00ff88',
-        'warning': '#ffb703',
-        'error': '#ff006e',
-        'glass': '#1a2342',
-        'glow': '#00ffff'
-    }
-
-COLORS: Dict[str, str] = _load_theme_colors()
-
+# Apply theme
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
@@ -114,7 +64,28 @@ _setup_logging()
 
 
 class GlassCard(ctk.CTkFrame):
+    """Reusable glass-morphism card container widget.
+    
+    Provides a visually appealing card with frosted glass effect using
+    CustomTkinter. Used for grouping related content in the UI.
+    
+    Attributes:
+        title (str): Optional title displayed at top of card
+        
+    Example:
+        >>> card = GlassCard(parent, title="System Information")
+        >>> label = ctk.CTkLabel(card, text="Data goes here")
+        >>> label.pack(padx=20, pady=10)
+    """
+    
     def __init__(self, parent, title: str = "", **kwargs):
+        """Initialize glass card widget.
+        
+        Args:
+            parent: Parent widget
+            title: Optional title to display at top of card
+            **kwargs: Additional arguments passed to CTkFrame
+        """
         super().__init__(
             parent,
             fg_color=(COLORS['glass'], COLORS['bg_card']),
@@ -134,12 +105,35 @@ class GlassCard(ctk.CTkFrame):
 
 
 class ControlRoom(ctk.CTk):
+    """Main Haven Control Room application window.
+    
+    Provides central interface for managing galactic systems, viewing maps,
+    exporting applications, and managing system data. Supports both production
+    and test data sources with toggleable switching.
+    
+    Attributes:
+        data_source (ctk.StringVar): Current data source ('production' or 'testing')
+        _frozen (bool): Whether running as PyInstaller frozen executable
+        
+    Example:
+        >>> app = ControlRoom()
+        >>> app.mainloop()
+    """
+    
     def __init__(self):
+        """Initialize Haven Control Room window.
+        
+        Creates main window, sets up UI components, and initializes logging.
+        Dimensions are defined in UIConstants.
+        
+        Raises:
+            Exception: If UI building fails during initialization
+        """
         try:
             logging.info("Creating ControlRoom window...")
             super().__init__()
             self.title("Haven Control Room")
-            self.geometry("980x700")
+            self.geometry(f"{UIConstants.WINDOW_WIDTH}x{UIConstants.WINDOW_HEIGHT}")
             self.configure(fg_color=COLORS['bg_dark'])
             self._frozen = getattr(sys, 'frozen', False)
             # Data source: 'production' or 'testing'
@@ -152,7 +146,13 @@ class ControlRoom(ctk.CTk):
             raise
 
     # -------------------------- UI --------------------------
-    def _build_ui(self):
+    def _build_ui(self) -> None:
+        """Build complete control room user interface.
+        
+        Creates sidebar with buttons and controls, main content area with
+        information display, and status bar. Initializes all UI components
+        and connects event handlers.
+        """
         sidebar = ctk.CTkFrame(self, width=280, fg_color=COLORS['glass'], corner_radius=0)
         sidebar.pack(side="left", fill="y")
         sidebar.pack_propagate(False)
@@ -321,13 +321,35 @@ class ControlRoom(ctk.CTk):
         except Exception as e:
             self._log(f"Failed to open path: {e}")
 
-    def _run_bg(self, target, *args, **kwargs):
+    def _run_bg(self, target, *args, **kwargs) -> threading.Thread:
+        """Run function in background thread.
+        
+        Args:
+            target: Callable to run in background
+            *args: Positional arguments for target
+            **kwargs: Keyword arguments for target
+            
+        Returns:
+            threading.Thread: The started background thread
+            
+        Example:
+            >>> def long_operation():
+            ...     time.sleep(5)
+            ...     print("Done!")
+            >>> app._run_bg(long_operation)
+        """
         t = threading.Thread(target=target, args=args, kwargs=kwargs, daemon=True)
         t.start()
         return t
 
     # ----------------------- Actions ------------------------
-    def launch_gui(self):
+    def launch_gui(self) -> None:
+        """Launch System Entry Wizard for editing systems.
+        
+        Opens the System Entry Wizard UI either as a subprocess (frozen)
+        or direct import (development mode) to ensure proper Tkinter
+        root window isolation.
+        """
         self._log("Launching System Entry Wizard…")
         def run():
             try:
@@ -359,8 +381,22 @@ cd "{project_root()}"
                 self._log(f"Launch failed: {e}")
         self._run_bg(run)
 
-    def generate_map(self):
-        """Generate the 3D star map with progress indicator."""
+    def generate_map(self) -> None:
+        """Generate the 3D star map with progress indicator.
+        
+        Creates an interactive Three.js 3D map from the current system data
+        (production or testing). Shows progress dialog and opens map in browser
+        upon completion.
+        
+        The map generation includes:
+        - System positioning from coordinate data
+        - 3D sphere visualization
+        - Grid overlay
+        - Camera controls and navigation
+        
+        Example:
+            >>> app.generate_map()  # Generates and opens dist/VH-Map.html
+        """
         # Determine which data file to use
         source = self.data_source.get()
         if source == "testing":
@@ -626,7 +662,27 @@ cd "{project_root()}"
 
 
 class ExportDialog(ctk.CTkToplevel):
+    """Export application dialog.
+    
+    Modal dialog for selecting export platform (Windows/macOS) and output
+    directory. Handles selection and delegates to appropriate export method
+    on ControlRoom.
+    
+    Attributes:
+        platform_var (ctk.StringVar): Selected platform ('Windows' or 'macOS')
+        path_var (ctk.StringVar): Selected output directory path
+        
+    Example:
+        >>> dialog = ExportDialog(control_room)
+        # User selects platform and directory, export happens on OK
+    """
+    
     def __init__(self, parent: ControlRoom):
+        """Initialize export dialog.
+        
+        Args:
+            parent: Parent ControlRoom window
+        """
         super().__init__(parent)
         self.title("Export Application")
         self.geometry("480x260")
