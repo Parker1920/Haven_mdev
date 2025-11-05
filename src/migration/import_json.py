@@ -237,8 +237,12 @@ class JSONImporter:
                     self.stats.systems_skipped += 1
                     print(f"  ⊘ Skipped: {system_name} (already exists)")
             else:
-                # Import new system
-                self.provider.add_system(system_data)
+                # Import new system - ensure id field is not conflicting
+                # Remove id if it exists, let the provider generate a new one
+                system_copy = dict(system_data)
+                if 'id' in system_copy:
+                    del system_copy['id']
+                self.provider.add_system(system_copy)
                 self.stats.systems_imported += 1
                 print(f"  + Imported: {system_name}")
 

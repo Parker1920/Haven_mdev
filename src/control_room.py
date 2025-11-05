@@ -352,6 +352,10 @@ class ControlRoom(ctk.CTk):
             if PHASE2_ENABLED:
                 self._mk_btn(sidebar, "🔄 Sync Data (JSON ↔ DB)", self.show_sync_dialog,
                              fg=COLORS['accent_purple'], hover=COLORS['accent_pink']).pack(padx=20, pady=4, fill="x")
+            
+            # Phase 5: JSON Import button (import external JSON files)
+            self._mk_btn(sidebar, "📥 Import JSON File", self.show_import_json_dialog,
+                         fg=COLORS['success'], hover="#009966").pack(padx=20, pady=4, fill="x")
 
         # Content area
         content = ctk.CTkFrame(self, fg_color=COLORS['bg_dark'])
@@ -980,6 +984,152 @@ between JSON and database backends.
         except Exception as e:
             messagebox.showerror("Error", f"Failed to open sync dialog:\n{e}")
             logging.error(f"Sync dialog error: {e}", exc_info=True)
+
+    def show_import_json_dialog(self):
+        """Show JSON import dialog (Phase 5)"""
+        try:
+            # File dialog to select JSON file
+            file_path = filedialog.askopenfilename(
+                title="Select JSON File to Import",
+                initialdir=data_dir() / "imports",
+                filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
+            )
+            
+            if not file_path:
+                return  # User cancelled
+            
+            file_path = Path(file_path)
+            
+            # Create progress dialog
+            dialog = ctk.CTkToplevel(self)
+            dialog.geometry("600x500")
+            dialog.title("Import JSON File")
+            dialog.configure(fg_color=COLORS['bg_dark'])
+            
+            # Title
+            title = ctk.CTkLabel(
+                dialog,
+                text="📥 Import JSON File",
+                font=ctk.CTkFont(family="Segoe UI", size=20, weight="bold"),
+                text_color=COLORS['success']
+            )
+            title.pack(pady=(20, 10))
+            
+            # File info
+            file_info = ctk.CTkLabel(
+                dialog,
+                text=f"File: {file_path.name}",
+                font=ctk.CTkFont(family="Segoe UI", size=12),
+                text_color=COLORS['text_secondary']
+            )
+            file_info.pack(pady=5)
+            
+            # Options frame
+            options_frame = ctk.CTkFrame(dialog, fg_color=COLORS['glass'])
+            options_frame.pack(fill="x", padx=20, pady=15)
+            
+            # Update existing systems checkbox
+            update_var = ctk.BooleanVar(value=False)
+            update_check = ctk.CTkCheckBox(
+                options_frame,
+                text="Update existing systems (if False, duplicates will be skipped)",
+                variable=update_var,
+                font=ctk.CTkFont(family="Segoe UI", size=11),
+                text_color=COLORS['text_primary']
+            )
+            update_check.pack(padx=20, pady=15)
+            
+            # Result text area
+            result_frame = ctk.CTkFrame(dialog, fg_color=COLORS['bg_card'])
+            result_frame.pack(fill="both", expand=True, padx=20, pady=10)
+            
+            result_text = ctk.CTkTextbox(
+                result_frame,
+                font=ctk.CTkFont(family="Consolas", size=10),
+                fg_color=COLORS['bg_card'],
+                text_color=COLORS['text_primary']
+            )
+            result_text.pack(fill="both", expand=True, padx=10, pady=10)
+            
+            def do_import():
+                """Perform the import"""
+                try:
+                    result_text.delete("1.0", "end")
+                    result_text.insert("1.0", f"Importing from {file_path.name}...\n\n")
+                    dialog.update()
+                    
+                    # Import using JSONImporter
+                    from src.migration.import_json import JSONImporter
+                    
+                    importer = JSONImporter(use_database=USE_DATABASE if PHASE2_ENABLED else False)
+                    allow_updates = update_var.get()
+                    
+                    # Redirect output to text widget
+                    import io
+                    output_buffer = io.StringIO()
+                    
+                    class OutputRedirector:
+                        def write(self, text):
+                            result_text.insert("end", text)
+                            dialog.update()
+                        def flush(self):
+                            pass
+                    
+                    old_stdout = sys.stdout
+                    sys.stdout = OutputRedirector()
+                    
+                    success = importer.import_file(file_path, allow_updates=allow_updates)
+                    
+                    sys.stdout = old_stdout
+                    
+                    if success:
+                        result_text.insert("end", "\n\n✅ IMPORT SUCCESSFUL!\n")
+                        result_text.insert("end", f"Imported: {importer.stats.systems_imported}\n")
+                        result_text.insert("end", f"Updated: {importer.stats.systems_updated}\n")
+                        result_text.insert("end", f"Skipped: {importer.stats.systems_skipped}\n")
+                        result_text.insert("end", f"Failed: {importer.stats.systems_failed}\n")
+                        
+                        # Refresh UI if we have a data provider
+                        if self.data_provider:
+                            self._refresh_backend_info()
+                    else:
+                        result_text.insert("end", "\n\n❌ IMPORT FAILED\n")
+                        result_text.insert("end", f"Check errors above for details.\n")
+                    
+                except Exception as e:
+                    result_text.insert("end", f"\n\n❌ ERROR: {e}\n")
+                    logging.error(f"Import error: {e}", exc_info=True)
+            
+            # Button frame
+            btn_frame = ctk.CTkFrame(dialog, fg_color="transparent")
+            btn_frame.pack(pady=10)
+            
+            import_btn = ctk.CTkButton(
+                btn_frame,
+                text="Import",
+                command=do_import,
+                fg_color=COLORS['success'],
+                hover_color="#009966",
+                width=120
+            )
+            import_btn.pack(side="left", padx=5)
+            
+            close_btn = ctk.CTkButton(
+                btn_frame,
+                text="Close",
+                command=dialog.destroy,
+                fg_color=COLORS['bg_card'],
+                hover_color=COLORS['glass'],
+                width=120
+            )
+            close_btn.pack(side="left", padx=5)
+            
+            dialog.transient(self)
+            dialog.grab_set()
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to open import dialog:\n{e}")
+            logging.error(f"Import dialog error: {e}", exc_info=True)
 
     # ==================== Export Dialog ====================
 

@@ -14,10 +14,11 @@ Usage:
 """
 from __future__ import annotations
 
+import sys
 import logging
 from logging.handlers import RotatingFileHandler
 from datetime import datetime
-from common.paths import data_path, logs_dir, dist_dir
+from common.paths import data_path, logs_dir, dist_dir, project_root
 
 def _setup_logging() -> None:
     """Set up logging with console and file handlers."""
@@ -50,6 +51,26 @@ from pathlib import Path
 
 import pandas as pd
 from typing import Tuple, Dict, Any
+
+# Phase 4: Map Generator integration with database backend
+# Ensure project root is in sys.path so config/ can be imported
+_proj_root = project_root()
+if str(_proj_root) not in sys.path:
+    sys.path.insert(0, str(_proj_root))
+
+try:
+    from config.settings import (
+        USE_DATABASE,
+        get_data_provider,
+        get_current_backend
+    )
+    PHASE4_ENABLED = True
+    logging.info("[Phase 4] Map Generator database integration enabled")
+except ImportError as e:
+    # Fallback if Phase 4 modules not available - map will use JSON directly
+    PHASE4_ENABLED = False
+    USE_DATABASE = False
+    logging.warning(f"[Phase 4] Database integration disabled - using JSON fallback: {e}")
 
 
 # ============================================================================
@@ -106,14 +127,43 @@ def normalize_record(record: dict, region: Optional[str] = None) -> dict:
 
 def load_systems(path: Path = DATA_FILE) -> pd.DataFrame:
     """
-    Load systems from the data file, supporting new and legacy formats.
+    Load systems from the data file or database, supporting new and legacy formats.
+    
+    Phase 4: Now supports both JSON and database backends via data provider abstraction.
+    
     Args:
-        path: Path to the data.json file.
+        path: Path to the data.json file (used only if Phase 4 disabled or database unavailable).
     Returns:
         DataFrame of normalized system/region records.
     Raises:
         ValueError: If the JSON format is not supported.
     """
+    # Phase 4: Try to use data provider first
+    if PHASE4_ENABLED and USE_DATABASE:
+        try:
+            provider = get_data_provider()
+            backend = get_current_backend()
+            logging.info(f"[Phase 4] Loading systems from {backend.upper()} backend")
+            
+            systems = provider.get_all_systems()
+            records = []
+            for system_data in systems:
+                records.append(normalize_record(system_data))
+            
+            df = pd.DataFrame(records)
+            for c in ("id", "name", "x", "y", "z", "region", "fauna", "flora", "sentinel", "materials", "base_location", "planets"):
+                if c not in df.columns:
+                    df[c] = None
+            df["x"] = pd.to_numeric(df["x"], errors="coerce")
+            df["y"] = pd.to_numeric(df["y"], errors="coerce")
+            df["z"] = pd.to_numeric(df["z"], errors="coerce")
+            logging.info(f"[Phase 4] Loaded {len(df)} systems from {backend} backend")
+            return df
+        except Exception as e:
+            logging.warning(f"[Phase 4] Failed to load from data provider, falling back to JSON: {e}")
+            # Fall through to JSON loading below
+    
+    # Fallback: Load from JSON file directly
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except Exception as e:

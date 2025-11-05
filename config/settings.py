@@ -15,7 +15,7 @@ from pathlib import Path
 #
 # IMPORTANT: After Phase 1 testing is complete and verified,
 # this will be changed to True to make database the default.
-USE_DATABASE = True  # Changed to True for Phase 2 testing
+USE_DATABASE = True  # Changed to True for Phase 2-4 (Database mode active)
 
 # AUTO_DETECT_BACKEND: If True, automatically choose backend based on dataset size
 # - Systems < 1,000: Use JSON (faster for small datasets)
