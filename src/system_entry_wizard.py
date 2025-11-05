@@ -908,8 +908,11 @@ class SystemEntryWizard(ctk.CTk):
                 confirm = messagebox.askyesno("Overwrite", f"System '{system_data['name']}' exists. Overwrite?")
                 if not confirm:
                     return
+                # Delete existing system before adding new one
+                # This ensures we replace planets/moons/stations completely
+                self.data_provider.delete_system(existing['id'])
 
-            # Add or update system
+            # Add system (either new or replacement)
             self.data_provider.add_system(system_data)
 
             messagebox.showinfo("Success", f"System '{self.system_name}' saved with {len(self.planets)} planet(s)!")
