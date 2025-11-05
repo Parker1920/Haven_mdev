@@ -136,9 +136,21 @@ class HavenDatabase:
                 x REAL NOT NULL,
                 y REAL NOT NULL,
                 z REAL NOT NULL,
+                race TEXT,
+                sell_percent INTEGER,
+                buy_percent INTEGER,
                 FOREIGN KEY (system_id) REFERENCES systems(id) ON DELETE CASCADE
             )
         """)
+
+        # Migrate existing space_stations table if needed (add new columns)
+        try:
+            cursor.execute("SELECT race FROM space_stations LIMIT 1")
+        except:
+            # Columns don't exist, add them
+            cursor.execute("ALTER TABLE space_stations ADD COLUMN race TEXT")
+            cursor.execute("ALTER TABLE space_stations ADD COLUMN sell_percent INTEGER")
+            cursor.execute("ALTER TABLE space_stations ADD COLUMN buy_percent INTEGER")
 
         # Metadata table for tracking database version and stats
         cursor.execute("""
@@ -593,15 +605,22 @@ class HavenDatabase:
 
     def _add_space_station(self, cursor, system_id: str, station_data: Dict):
         """Add space station to system"""
+        # Space stations don't have separate coordinates - use 0,0,0 as default
+        x = station_data.get('x', 0.0)
+        y = station_data.get('y', 0.0)
+        z = station_data.get('z', 0.0)
+        race = station_data.get('race')
+        sell_percent = station_data.get('sell_percent')
+        buy_percent = station_data.get('buy_percent')
+
         cursor.execute("""
-            INSERT INTO space_stations (system_id, name, x, y, z)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO space_stations (system_id, name, x, y, z, race, sell_percent, buy_percent)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             system_id,
             station_data['name'],
-            station_data['x'],
-            station_data['y'],
-            station_data['z']
+            x, y, z,
+            race, sell_percent, buy_percent
         ))
 
     def update_system(self, system_id: str, updates: Dict):

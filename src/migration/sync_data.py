@@ -184,7 +184,8 @@ class DataSynchronizer:
                 shutil.copy2(self.json_path, backup_path)
                 print(f"✓ Backup created: {backup_path}")
 
-            db_systems = self.db_provider.get_all_systems()
+            # Get all systems INCLUDING planets and moons
+            db_systems = self.db_provider.get_all_systems(include_planets=True)
             print(f"Found {len(db_systems)} systems in database")
 
             # Build JSON structure

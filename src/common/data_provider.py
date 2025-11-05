@@ -301,10 +301,10 @@ class DatabaseDataProvider:
         self.db_class = HavenDatabase
         logger.info(f"Initialized database data provider: {db_path}")
 
-    def get_all_systems(self, region: Optional[str] = None) -> List[Dict]:
+    def get_all_systems(self, region: Optional[str] = None, include_planets: bool = False) -> List[Dict]:
         """Get all systems"""
         with self.db_class(self.db_path) as db:
-            return db.get_all_systems(region=region)
+            return db.get_all_systems(region=region, include_planets=include_planets)
 
     def get_systems_paginated(self, page: int = 1, per_page: int = 100,
                              region: Optional[str] = None) -> Dict:

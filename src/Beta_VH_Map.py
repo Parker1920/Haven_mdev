@@ -178,7 +178,8 @@ def load_systems(path: Path = DATA_FILE) -> pd.DataFrame:
             backend = get_current_backend()
             logging.info(f"[Phase 4] Loading systems from {backend.upper()} backend")
             
-            systems = provider.get_all_systems()
+            # Load with planets and moons for map visualization
+            systems = provider.get_all_systems(include_planets=True)
             records = []
             for system_data in systems:
                 records.append(normalize_record(system_data))

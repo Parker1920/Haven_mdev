@@ -2,7 +2,7 @@
 
 
 a = Analysis(
-    ['C:\\Users\\parke\\OneDrive\\Desktop\\Haven_mdev\\src\\control_room.py'],
+    ['..\\..\\src\\control_room.py'],
     pathex=[],
     binaries=[],
     datas=[],
@@ -35,4 +35,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon=None,
 )

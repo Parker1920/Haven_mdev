@@ -453,6 +453,129 @@ class PlanetMoonEditor(ctk.CTkToplevel):
         self.destroy()
 
 
+class SpaceStationEditor(ctk.CTkToplevel):
+    """Dialog for adding/editing space station"""
+    def __init__(self, parent, station_data=None, system_name=""):
+        super().__init__(parent)
+        self.title("Space Station Editor")
+        self.geometry("600x450")
+        self.configure(fg_color=COLORS['bg_dark'])
+        self.resizable(False, False)
+
+        self.result = None
+        self.removed = False
+
+        # Generate defaults
+        import random
+        races = ["Gek", "Korvax", "Vy'keen"]
+        default_name = f"{system_name} Station" if system_name else "Space Station"
+        default_race = station_data['race'] if station_data else random.choice(races)
+        default_sell = station_data['sell_percent'] if station_data else 80
+        default_buy = station_data['buy_percent'] if station_data else 120
+
+        # Main container
+        main = ctk.CTkFrame(self, fg_color=COLORS['bg_card'], corner_radius=15)
+        main.pack(fill="both", expand=True, padx=20, pady=20)
+
+        # Title
+        title = ctk.CTkLabel(main, text="🛰️ Space Station Configuration",
+                            font=ctk.CTkFont(family="Segoe UI", size=22, weight="bold"),
+                            text_color=COLORS['text_primary'])
+        title.pack(pady=(20, 30))
+
+        # Form
+        form = ctk.CTkFrame(main, fg_color="transparent")
+        form.pack(fill="both", expand=True, padx=30)
+
+        # Name
+        self.name_entry = ModernEntry(form, label="Station Name", placeholder="e.g., ZENITH Station")
+        self.name_entry.pack(fill="x", pady=(0, 15))
+        if station_data:
+            self.name_entry.set(station_data['name'])
+        else:
+            self.name_entry.set(default_name)
+
+        # Race
+        ctk.CTkLabel(form, text="Race", text_color=COLORS['text_secondary'],
+                    font=ctk.CTkFont(family="Segoe UI", size=13)).pack(anchor="w", pady=(0, 5))
+        self.race_var = ctk.StringVar(value=default_race)
+        race_menu = ctk.CTkOptionMenu(form, values=races, variable=self.race_var,
+                                      fg_color=COLORS['bg_card'], button_color=COLORS['accent_cyan'],
+                                      font=ctk.CTkFont(family="Segoe UI", size=13))
+        race_menu.pack(fill="x", pady=(0, 15))
+
+        # Sell %
+        self.sell_entry = ModernEntry(form, label="Sell Percent (%)", placeholder="80", validate_type="number")
+        self.sell_entry.pack(fill="x", pady=(0, 15))
+        self.sell_entry.set(str(default_sell))
+
+        # Buy %
+        self.buy_entry = ModernEntry(form, label="Buy Percent (%)", placeholder="120", validate_type="number")
+        self.buy_entry.pack(fill="x", pady=(0, 15))
+        self.buy_entry.set(str(default_buy))
+
+        # Buttons
+        btn_frame = ctk.CTkFrame(main, fg_color="transparent")
+        btn_frame.pack(fill="x", padx=30, pady=(10, 20))
+
+        if station_data:
+            # Show Remove button if editing
+            remove_btn = ctk.CTkButton(btn_frame, text="🗑️ Remove", command=self.remove_station,
+                                      height=40, corner_radius=8,
+                                      fg_color=COLORS['error'], hover_color="#cc0000",
+                                      font=ctk.CTkFont(family="Segoe UI", size=14, weight="bold"))
+            remove_btn.pack(side="left", fill="x", expand=True, padx=(0, 5))
+
+        cancel_btn = ctk.CTkButton(btn_frame, text="Cancel", command=self.cancel,
+                                   height=40, corner_radius=8,
+                                   fg_color=COLORS['bg_card'], hover_color=COLORS['accent_purple'],
+                                   font=ctk.CTkFont(family="Segoe UI", size=14, weight="bold"))
+        cancel_btn.pack(side="left", fill="x", expand=True, padx=5)
+
+        save_btn = ctk.CTkButton(btn_frame, text="💾 Save", command=self.save,
+                                height=40, corner_radius=8,
+                                fg_color=COLORS['success'], hover_color="#00cc70",
+                                font=ctk.CTkFont(family="Segoe UI", size=14, weight="bold"))
+        save_btn.pack(side="left", fill="x", expand=True, padx=(5, 0))
+
+        # Center on parent
+        self.transient(parent)
+        self.grab_set()
+
+    def save(self):
+        """Save space station data"""
+        name = self.name_entry.get().strip()
+        if not name:
+            messagebox.showerror("Error", "Station name is required")
+            return
+
+        try:
+            sell_percent = int(self.sell_entry.get())
+            buy_percent = int(self.buy_entry.get())
+        except ValueError:
+            messagebox.showerror("Error", "Sell and Buy percent must be numbers")
+            return
+
+        self.result = {
+            'name': name,
+            'race': self.race_var.get(),
+            'sell_percent': sell_percent,
+            'buy_percent': buy_percent
+        }
+        self.destroy()
+
+    def remove_station(self):
+        """Remove the space station"""
+        confirm = messagebox.askyesno("Confirm", "Remove this space station?")
+        if confirm:
+            self.removed = True
+            self.destroy()
+
+    def cancel(self):
+        """Cancel without saving"""
+        self.destroy()
+
+
 class SystemEntryWizard(ctk.CTk):
     """Two-page wizard for complete system entry"""
     def __init__(self):
@@ -464,7 +587,9 @@ class SystemEntryWizard(ctk.CTk):
         # Data
         self.data_file = data_path("data.json")
         self.planets = []
+        self.space_station = None  # Space station data
         self.current_page = 1
+        self.data_source = ctk.StringVar(value='production')  # Data source: production, testing, load_test
 
         # Phase 3: Initialize data provider
         self.data_provider = None
@@ -494,16 +619,134 @@ class SystemEntryWizard(ctk.CTk):
             self.data_provider = None
             self.current_backend = 'json'
 
+    def _on_data_source_change(self, choice=None):
+        """Handle data source dropdown change with smart behavior"""
+        # Check if form has unsaved data
+        has_data = bool(
+            self.name_entry.get().strip() or
+            self.region_entry.get().strip() or
+            self.x_entry.get().strip() or
+            self.y_entry.get().strip() or
+            self.z_entry.get().strip() or
+            self.planets or
+            self.space_station
+        )
+
+        if has_data:
+            # Ask for confirmation
+            confirm = messagebox.askyesno(
+                "Unsaved Changes",
+                "You have unsaved data in the form.\n\n"
+                "Switching data source will clear the current form.\n\n"
+                "Continue anyway?"
+            )
+            if not confirm:
+                # Revert dropdown to previous value
+                # This is a bit tricky - we need to track previous value
+                return
+
+        # Update data file based on selection
+        source = self.data_source.get()
+        if source == "testing":
+            self.data_file = data_path("testing.json")
+        elif source == "load_test":
+            self.data_file = data_path("load_test.json")
+        else:  # production
+            self.data_file = data_path("data.json")
+
+        # Clear form
+        self.clear_page1()
+
+        # Update visual indicators
+        self._update_data_source_ui()
+
+        # Reload system list
+        self._reload_system_list()
+
+        logging.info(f"Data source changed to: {source}")
+
+    def _update_data_source_ui(self):
+        """Update data source badge and count"""
+        source = self.data_source.get()
+
+        # Update badge
+        if source == "production":
+            self.data_badge.configure(text="PRODUCTION", fg_color=COLORS['success'], text_color="white")
+        elif source == "testing":
+            self.data_badge.configure(text="TESTING", fg_color="#ff8800", text_color="white")
+        else:  # load_test
+            self.data_badge.configure(text="LOAD TEST", fg_color=COLORS['accent_purple'], text_color="white")
+
+        # Update count
+        try:
+            systems = self.get_existing_systems()
+            count = len(systems)
+            self.data_count_label.configure(text=f"{count} systems")
+        except Exception as e:
+            logging.warning(f"Failed to get system count: {e}")
+            self.data_count_label.configure(text="")
+
+    def _reload_system_list(self):
+        """Reload the system list dropdown with current data source"""
+        try:
+            systems = self.get_existing_systems()
+            self.edit_system_menu.configure(values=["(New System)"] + systems)
+            self.edit_system_var.set("(New System)")
+        except Exception as e:
+            logging.error(f"Failed to reload system list: {e}")
+
     def build_ui(self):
         # Header
-        header = ctk.CTkFrame(self, fg_color=COLORS['glass'], height=80)
+        header = ctk.CTkFrame(self, fg_color=COLORS['glass'], height=120)  # Increased height for data source
         header.pack(fill="x", side="top")
         header.pack_propagate(False)
-        
+
         title = ctk.CTkLabel(header, text="✨ HAVEN SYSTEM ENTRY WIZARD",
                              font=ctk.CTkFont(family="Segoe UI", size=24, weight="bold"),
                              text_color=COLORS['accent_cyan'])
-        title.pack(side="left", padx=30, pady=20)
+        title.pack(side="left", padx=30, pady=(15, 5))
+
+        # Data Source Selector (center-left)
+        data_source_frame = ctk.CTkFrame(header, fg_color="transparent")
+        data_source_frame.pack(side="left", padx=(0, 20), pady=15)
+
+        data_label = ctk.CTkLabel(data_source_frame, text="Data Source:",
+                                  font=ctk.CTkFont(family="Segoe UI", size=11),
+                                  text_color=COLORS['text_secondary'])
+        data_label.pack(anchor="w", pady=(0, 3))
+
+        self.data_dropdown = ctk.CTkOptionMenu(
+            data_source_frame,
+            variable=self.data_source,
+            values=["production", "testing", "load_test"],
+            command=self._on_data_source_change,
+            font=ctk.CTkFont(family="Segoe UI", size=12),
+            dropdown_font=ctk.CTkFont(family="Segoe UI", size=11),
+            fg_color=COLORS['bg_card'],
+            button_color=COLORS['accent_purple'],
+            button_hover_color=COLORS['accent_cyan'],
+            dropdown_fg_color=COLORS['bg_card'],
+            dropdown_hover_color=COLORS['accent_purple'],
+            text_color=COLORS['text_primary'],
+            width=180,
+            height=32,
+            corner_radius=6
+        )
+        self.data_dropdown.pack(fill="x")
+
+        # Data source badge and count
+        badge_frame = ctk.CTkFrame(data_source_frame, fg_color="transparent")
+        badge_frame.pack(anchor="w", pady=(3, 0))
+
+        self.data_badge = ctk.CTkLabel(badge_frame, text="",
+                                       font=ctk.CTkFont(family="Segoe UI", size=10, weight="bold"),
+                                       corner_radius=4, padx=6, pady=2)
+        self.data_badge.pack(side="left", padx=(0, 5))
+
+        self.data_count_label = ctk.CTkLabel(badge_frame, text="",
+                                            font=ctk.CTkFont(family="Segoe UI", size=10),
+                                            text_color=COLORS['text_secondary'])
+        self.data_count_label.pack(side="left")
 
         # Phase 3: Backend status indicators
         if PHASE3_ENABLED:
@@ -564,6 +807,9 @@ class SystemEntryWizard(ctk.CTk):
         
         # Show page 1 (after buttons are created)
         self.show_page(1)
+
+        # Initialize data source visual indicators
+        self._update_data_source_ui()
     
     def build_page1(self):
         # Scrollable form
@@ -629,7 +875,31 @@ class SystemEntryWizard(ctk.CTk):
                                                 placeholder="e.g., Trade hub; Rare resources; Pirate activity",
                                                 height=80)
         self.attributes_textbox.pack(padx=20, pady=(0, 10), fill="x")
-    
+
+        # Space Station section
+        station_card = GlassCard(scroll, title="🛰️ Space Station (Optional)")
+        station_card.pack(fill="x", pady=(0, 20))
+
+        # Button row and status
+        station_content = ctk.CTkFrame(station_card, fg_color="transparent")
+        station_content.pack(padx=20, pady=(0, 15), fill="x")
+
+        button_row = ctk.CTkFrame(station_content, fg_color="transparent")
+        button_row.pack(fill="x", pady=(0, 10))
+
+        self.station_btn = ctk.CTkButton(button_row, text="➕ Add Space Station",
+                                        command=self.add_edit_space_station, height=40,
+                                        corner_radius=8, fg_color=COLORS['accent_cyan'],
+                                        hover_color=COLORS['glow'],
+                                        font=ctk.CTkFont(family="Segoe UI", size=14, weight="bold"))
+        self.station_btn.pack(side="left", padx=(0, 10))
+
+        # Status label (shows station details when added)
+        self.station_status_label = ctk.CTkLabel(button_row, text="",
+                                                text_color=COLORS['text_secondary'],
+                                                font=ctk.CTkFont(family="Segoe UI", size=13))
+        self.station_status_label.pack(side="left", padx=(10, 0))
+
     def build_page2(self):
         # Two-column layout: left = controls, right = upload list
         holder = ctk.CTkFrame(self.page2_frame, fg_color="transparent")
@@ -673,7 +943,29 @@ class SystemEntryWizard(ctk.CTk):
                 return
             self.planets.append(editor.result)
             self.render_upload_list()
-    
+
+    def add_edit_space_station(self):
+        """Add or edit space station with dialog"""
+        editor = SpaceStationEditor(self, station_data=self.space_station, system_name=self.name_entry.get())
+        self.wait_window(editor)
+        if editor.result:
+            self.space_station = editor.result
+            self.update_station_ui()
+        elif editor.removed:
+            # User chose to remove station
+            self.space_station = None
+            self.update_station_ui()
+
+    def update_station_ui(self):
+        """Update the space station button and status label"""
+        if self.space_station:
+            self.station_btn.configure(text="✏️ Edit Space Station")
+            status_text = f"✓ {self.space_station['name']} | {self.space_station['race']} | Sell: {self.space_station['sell_percent']}% | Buy: {self.space_station['buy_percent']}%"
+            self.station_status_label.configure(text=status_text, text_color=COLORS['success'])
+        else:
+            self.station_btn.configure(text="➕ Add Space Station")
+            self.station_status_label.configure(text="", text_color=COLORS['text_secondary'])
+
     def edit_planet(self, index):
         editor = PlanetMoonEditor(self, is_moon=False, planet_data=self.planets[index])
         self.wait_window(editor)
@@ -787,6 +1079,13 @@ class SystemEntryWizard(ctk.CTk):
                             self.planets = [{'name': name, 'sentinel': 'N/A', 'fauna': 'N/A', 'flora': 'N/A',
                                             'properties': 'N/A', 'materials': 'N/A', 'base_location': 'N/A',
                                             'photo': 'N/A', 'notes': 'N/A', 'moons': []} for name in planets_data]
+                    # Load space station if present
+                    station_data = item.get('space_station')
+                    if station_data and isinstance(station_data, dict):
+                        self.space_station = station_data
+                    else:
+                        self.space_station = None
+                    self.update_station_ui()
         except Exception:
             logging.exception("Failed to load system")
             messagebox.showerror("Error", "Failed to load system")
@@ -799,6 +1098,8 @@ class SystemEntryWizard(ctk.CTk):
         self.z_entry.set('')
         self.attributes_textbox.set('')
         self.planets = []
+        self.space_station = None
+        self.update_station_ui()
     
     def show_page(self, page):
         self.current_page = page
@@ -881,6 +1182,10 @@ class SystemEntryWizard(ctk.CTk):
                 # Keep legacy planets_names inside each system for backward compat if needed
                 "planets_names": [p['name'] for p in self.planets]
             }
+
+            # Add space station if present
+            if self.space_station:
+                system_data['space_station'] = self.space_station
 
             # Validate system data against schema
             is_valid, error = validate_system_data(system_data)
