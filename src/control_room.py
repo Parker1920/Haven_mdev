@@ -178,10 +178,44 @@ class ControlRoom(ctk.CTk):
             self.data_provider = get_data_provider()
             self.current_backend = get_current_backend()
             logging.info(f"Data provider initialized: {self.current_backend}")
+            
+            # Check data sync status on startup
+            self._check_data_sync_status()
         except Exception as e:
             logging.error(f"Failed to initialize data provider: {e}")
             self.data_provider = None
             self.current_backend = 'json'
+
+    def _check_data_sync_status(self):
+        """Check if JSON and database are in sync (Phase 2)"""
+        try:
+            from src.migration.sync_data import DataSynchronizer
+            syncer = DataSynchronizer()
+            status = syncer.check_sync_status()
+            
+            if "error" in status:
+                logging.warning(f"Could not check sync status: {status['error']}")
+                return
+            
+            if not status['in_sync']:
+                msg = f"Data sync issue detected: "
+                issues = []
+                if status['only_in_json'] > 0:
+                    issues.append(f"{status['only_in_json']} systems only in JSON")
+                if status['only_in_db'] > 0:
+                    issues.append(f"{status['only_in_db']} systems only in database")
+                if status['differences'] > 0:
+                    issues.append(f"{status['differences']} systems differ")
+                msg += ", ".join(issues)
+                logging.warning(msg)
+                
+                # Store sync status for UI to show if needed
+                self.sync_status = status
+            else:
+                logging.info(f"Data sync OK: JSON and database both have {status['json_count']} systems")
+                self.sync_status = None
+        except Exception as e:
+            logging.debug(f"Sync check failed (non-critical): {e}")
 
     # -------------------------- UI --------------------------
     def _build_ui(self):
@@ -313,6 +347,11 @@ class ControlRoom(ctk.CTk):
             if PHASE2_ENABLED and ENABLE_DATABASE_STATS and self.current_backend == 'database':
                 self._mk_btn(sidebar, "📊 Database Statistics", self.show_database_stats,
                              fg=COLORS['accent_cyan'], hover="#00b8cc").pack(padx=20, pady=4, fill="x")
+            
+            # Phase 2: Data Sync button (show if both JSON and database exist)
+            if PHASE2_ENABLED:
+                self._mk_btn(sidebar, "🔄 Sync Data (JSON ↔ DB)", self.show_sync_dialog,
+                             fg=COLORS['accent_purple'], hover=COLORS['accent_pink']).pack(padx=20, pady=4, fill="x")
 
         # Content area
         content = ctk.CTkFrame(self, fg_color=COLORS['bg_dark'])
@@ -788,6 +827,161 @@ Database Path: {DATABASE_PATH}"""
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load database statistics:\n{e}")
             logging.error(f"Database stats error: {e}", exc_info=True)
+
+    def show_sync_dialog(self):
+        """Show data synchronization dialog (Phase 2)"""
+        try:
+            from src.migration.sync_data import DataSynchronizer
+            
+            dialog = ctk.CTkToplevel(self)
+            dialog.geometry("700x600")
+            dialog.title("Data Synchronization")
+            dialog.configure(fg_color=COLORS['bg_dark'])
+
+            # Title
+            title = ctk.CTkLabel(
+                dialog,
+                text="🔄 Data Synchronization",
+                font=ctk.CTkFont(family="Segoe UI", size=20, weight="bold"),
+                text_color=COLORS['accent_cyan']
+            )
+            title.pack(pady=(20, 10))
+
+            # Check sync status
+            syncer = DataSynchronizer()
+            status = syncer.check_sync_status()
+
+            if "error" in status:
+                error_label = ctk.CTkLabel(
+                    dialog,
+                    text=f"Error checking sync status:\n{status['error']}",
+                    font=ctk.CTkFont(family="Segoe UI", size=12),
+                    text_color=COLORS['error']
+                )
+                error_label.pack(pady=20)
+                return
+
+            # Status frame
+            status_frame = ctk.CTkFrame(dialog, fg_color=COLORS['glass'])
+            status_frame.pack(fill="x", padx=20, pady=10)
+
+            # Build status text
+            status_text = f"""JSON File: {status['json_count']} systems
+Database: {status['db_count']} systems
+In Both: {status['in_both']} systems
+
+Status: {'✓ IN SYNC' if status['in_sync'] else '✗ OUT OF SYNC'}"""
+
+            if not status['in_sync']:
+                if status['only_in_json'] > 0:
+                    status_text += f"\n\n⚠ {status['only_in_json']} systems only in JSON"
+                if status['only_in_db'] > 0:
+                    status_text += f"\n⚠ {status['only_in_db']} systems only in database"
+                if status['differences'] > 0:
+                    status_text += f"\n⚠ {status['differences']} systems have differences"
+
+            status_label = ctk.CTkLabel(
+                status_frame,
+                text=status_text,
+                font=ctk.CTkFont(family="Consolas", size=12),
+                text_color=COLORS['success'] if status['in_sync'] else COLORS['warning'],
+                justify="left"
+            )
+            status_label.pack(padx=20, pady=20)
+
+            # Action buttons frame
+            btn_frame = ctk.CTkFrame(dialog, fg_color="transparent")
+            btn_frame.pack(pady=20)
+
+            # JSON to DB button
+            def sync_json_to_db():
+                if messagebox.askyesno("Confirm", "Sync database from JSON?\n\nThis will add any systems in JSON to the database."):
+                    try:
+                        success = syncer.sync_json_to_db(overwrite=False)
+                        if success:
+                            messagebox.showinfo("Success", "Database synced from JSON")
+                            dialog.destroy()
+                            self._check_data_sync_status()  # Re-check status
+                        else:
+                            messagebox.showerror("Error", "Sync failed. Check logs for details.")
+                    except Exception as e:
+                        messagebox.showerror("Error", f"Sync failed: {e}")
+
+            json_to_db_btn = ctk.CTkButton(
+                btn_frame,
+                text="JSON → Database",
+                command=sync_json_to_db,
+                fg_color=COLORS['accent_cyan'],
+                hover_color="#00b8cc",
+                width=180
+            )
+            json_to_db_btn.grid(row=0, column=0, padx=10, pady=5)
+
+            # DB to JSON button
+            def sync_db_to_json():
+                if messagebox.askyesno("Confirm", "Sync JSON from database?\n\nThis will overwrite data.json with database contents.\n\nA backup will be created."):
+                    try:
+                        success = syncer.sync_db_to_json(backup=True)
+                        if success:
+                            messagebox.showinfo("Success", "JSON synced from database")
+                            dialog.destroy()
+                            self._check_data_sync_status()  # Re-check status
+                        else:
+                            messagebox.showerror("Error", "Sync failed. Check logs for details.")
+                    except Exception as e:
+                        messagebox.showerror("Error", f"Sync failed: {e}")
+
+            db_to_json_btn = ctk.CTkButton(
+                btn_frame,
+                text="Database → JSON",
+                command=sync_db_to_json,
+                fg_color=COLORS['accent_purple'],
+                hover_color=COLORS['accent_pink'],
+                width=180
+            )
+            db_to_json_btn.grid(row=0, column=1, padx=10, pady=5)
+
+            # Info text
+            info_text = """
+Synchronization Options:
+
+• JSON → Database: Copies systems from JSON to database
+  (Keeps existing database systems)
+
+• Database → JSON: Copies systems from database to JSON
+  (Overwrites JSON file, creates backup)
+
+Use these tools to keep your data in sync when switching
+between JSON and database backends.
+            """
+
+            info_label = ctk.CTkLabel(
+                dialog,
+                text=info_text.strip(),
+                font=ctk.CTkFont(family="Segoe UI", size=11),
+                text_color=COLORS['text_secondary'],
+                justify="left"
+            )
+            info_label.pack(padx=30, pady=10)
+
+            # Close button
+            close_btn = ctk.CTkButton(
+                dialog,
+                text="Close",
+                command=dialog.destroy,
+                fg_color=COLORS['bg_card'],
+                hover_color=COLORS['glass']
+            )
+            close_btn.pack(pady=(10, 20))
+
+            dialog.transient(self)
+            dialog.grab_set()
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to open sync dialog:\n{e}")
+            logging.error(f"Sync dialog error: {e}", exc_info=True)
+
+    # ==================== Export Dialog ====================
 
     # iOS PWA export removed - archived in Archive-Dump
     # Use Haven_Mobile_Map.html instead (located in dist/ folder)
