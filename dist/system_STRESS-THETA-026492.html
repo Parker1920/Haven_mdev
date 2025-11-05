@@ -1,0 +1,1342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Haven Galaxy - 3D Star Map</title>
+    <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="static/css/map-styles.css">
+</head>
+<body>
+    <!-- Loading overlay -->
+    <div id="loading-overlay">
+        <div class="spinner"></div>
+        <p>INITIALIZING GALAXY MAP...</p>
+    </div>
+
+    <!-- Title -->
+    <div id="title-overlay">
+        <h1 id="view-title">HAVEN GALAXY - 3D STAR MAP</h1>
+    </div>
+
+    <!-- Back button (shown in System View) -->
+    <button id="back-btn" style="display: none; position: fixed; top: 10px; left: 10px; padding: 10px 20px; background: rgba(0, 206, 209, 0.2); color: rgba(0, 206, 209, 1); border: 2px solid rgba(0, 206, 209, 0.6); border-radius: 4px; font-family: 'Rajdhani', sans-serif; font-weight: 600; font-size: 16px; z-index: 1000; cursor: pointer; backdrop-filter: blur(10px);">← Back to Galaxy View</button>
+
+    <!-- Settings button -->
+    <button id="btn-settings">⚙️ Settings</button>
+
+    <!-- Settings backdrop -->
+    <div id="settings-backdrop"></div>
+
+    <!-- Settings panel -->
+    <div id="settings-panel">
+        <div class="settings-header">
+            <h2>⚙️ VIEW SETTINGS</h2>
+        </div>
+
+        <div class="settings-section">
+            <h3>UI Visibility</h3>
+            <div class="setting-item">
+                <span class="setting-label">Show Legend</span>
+                <div class="setting-toggle active" data-setting="showLegend">
+                    <div class="setting-toggle-slider"></div>
+                </div>
+            </div>
+            <div class="setting-item">
+                <span class="setting-label">Show Info Panel</span>
+                <div class="setting-toggle active" data-setting="showInfoPanel">
+                    <div class="setting-toggle-slider"></div>
+                </div>
+            </div>
+            <div class="setting-item">
+                <span class="setting-label">Show Compass & Scale</span>
+                <div class="setting-toggle active" data-setting="showCompass">
+                    <div class="setting-toggle-slider"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="settings-section">
+            <h3>Debug Tools</h3>
+            <button id="download-logs" title="Download browser console logs for debugging">📥 Download Browser Logs</button>
+        </div>
+
+        <div class="settings-footer">
+            <button class="btn-settings btn-cancel" id="btn-settings-cancel">Cancel</button>
+            <button class="btn-settings btn-save" id="btn-settings-save">Save</button>
+        </div>
+    </div>
+
+    <!-- Info panel -->
+    <div id="info-panel">
+        <h3>System Information</h3>
+        <p id="info-content">Click on a system to see details</p>
+    </div>
+
+    <!-- Legend (dynamically populated) -->
+    <div id="legend">
+        <h4>LEGEND</h4>
+        <div id="legend-items"></div>
+    </div>
+
+    <!-- HUD container: controls, compass, scale -->
+    <div id="controls-hint">
+        <div style="display:flex; gap:8px; align-items:center; justify-content:space-between;">
+            <div style="display:flex; gap:8px;">
+                <button id="btn-controls" style="background:#0a0a14; color:#00CED1; border:1px solid #00CED1; padding:4px 8px; border-radius:4px; cursor:pointer;">Controls</button>
+                <button id="btn-grid" style="background:#0a0a14; color:#00CED1; border:1px solid #00CED1; padding:4px 8px; border-radius:4px; cursor:pointer;">Grid: On</button>
+                <button id="btn-screenshot" style="background:#0a0a14; color:#00CED1; border:1px solid #00CED1; padding:4px 8px; border-radius:4px; cursor:pointer;">Screenshot</button>
+            </div>
+        </div>
+        <div id="controls-panel" style="display:none; margin-top:8px; border-top:1px solid rgba(0,206,209,0.2); padding-top:8px;">
+            <div style="display:flex; gap:12px; align-items:center; flex-wrap: wrap;">
+                <label style="display:flex; align-items:center; gap:4px;">
+                    <input id="toggle-autorotate" type="checkbox" /> Auto-rotate
+                </label>
+                <label style="display:flex; align-items:center; gap:4px;">
+                    <input id="toggle-stats" type="checkbox" /> Stats
+                </label>
+                <button id="btn-labels" style="background:#0a0a14; color:#00CED1; border:1px solid #00CED1; padding:4px 8px; border-radius:4px; cursor:pointer;">Labels: Off</button>
+                <button id="btn-regions" style="background:#0a0a14; color:#00CED1; border:1px solid #00CED1; padding:4px 8px; border-radius:4px; cursor:pointer;">Regions: Off</button>
+            </div>
+        </div>
+        <div style="display:flex; gap:10px; align-items:center; margin-top:8px;">
+            <canvas id="compass-canvas" width="64" height="64" style="background: rgba(0, 20, 40, 0.35); border: 1px solid rgba(0,206,209,0.3); border-radius:6px;"></canvas>
+            <div id="scale-text" style="color:#00CED1; font-family: Rajdhani, sans-serif; font-size:12px; background: rgba(0, 20, 40, 0.35); border: 1px solid rgba(0,206,209,0.3); padding:6px 10px; border-radius:6px;">Scale: major grid = …</div>
+        </div>
+    </div>
+
+    <!-- Hover tooltip -->
+    <div id="hover-tooltip"></div>
+
+    <!-- Canvas container -->
+    <div id="canvas-container"></div>
+
+    <!-- Three.js library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- Optional stats.js (using older non-module version) -->
+    <script src="https://cdn.jsdelivr.net/npm/stats.js@0.17.0/build/stats.min.js"></script>
+
+    <!-- Inject data from Python -->
+    <script>
+        // jshint ignore:start
+        // Data injected by Python - placeholders will be replaced during generation
+        window.SYSTEMS_DATA = [
+  {
+    "type": "planet",
+    "name": "STRESS-THETA-026492-P1",
+    "region": "Stress Sector Beta",
+    "x": -1.356247077116427,
+    "y": 0.0,
+    "z": -2.6759285987883064,
+    "sentinel": "Extreme",
+    "fauna": "Extreme diversity",
+    "flora": "Sparse",
+    "materials": "Diamonds, Emeralds, Exotic crystals",
+    "moons": [
+      {
+        "name": "STRESS-THETA-026492-P1-M1",
+        "sentinel": "Low",
+        "fauna": "Abundant",
+        "flora": "Lush vegetation",
+        "materials": "Rare Earth Elements, Uranium",
+        "x": -550.8442635380134,
+        "y": -15.525294652284629,
+        "z": 66.32883798914321
+      },
+      {
+        "name": "STRESS-THETA-026492-P1-M2",
+        "sentinel": "Aggressive",
+        "fauna": "None",
+        "flora": "Dense",
+        "materials": "Copper, Aluminum, Titanium",
+        "x": -652.5841876303475,
+        "y": -288.0545292569567,
+        "z": 144.43446459722446
+      },
+      {
+        "name": "STRESS-THETA-026492-P1-M3",
+        "sentinel": "Hostile",
+        "fauna": "Moderate",
+        "flora": "Sparse",
+        "materials": "Rare Earth Elements, Uranium",
+        "x": -759.326019207637,
+        "y": 130.7403989347406,
+        "z": -77.89149934171596
+      },
+      {
+        "name": "STRESS-THETA-026492-P1-M4",
+        "sentinel": "Extreme",
+        "fauna": "None",
+        "flora": "Dense",
+        "materials": "Rare Earth Elements, Uranium",
+        "x": -595.3754820998771,
+        "y": -397.00120221454836,
+        "z": -218.02068341828235
+      },
+      {
+        "name": "STRESS-THETA-026492-P1-M5",
+        "sentinel": "Extreme",
+        "fauna": "Rich",
+        "flora": "Moderate",
+        "materials": "Copper, Aluminum, Titanium",
+        "x": -53.20510845534727,
+        "y": -548.8717942107695,
+        "z": -225.44399405039445
+      }
+    ]
+  },
+  {
+    "type": "moon",
+    "name": "STRESS-THETA-026492-P1-M1",
+    "region": "Stress Sector Beta",
+    "x": 1.5575563881483776,
+    "y": 0.0,
+    "z": -3.245615210978988,
+    "sentinel": "Low",
+    "fauna": "Abundant",
+    "flora": "Lush vegetation",
+    "materials": "Rare Earth Elements, Uranium"
+  },
+  {
+    "type": "moon",
+    "name": "STRESS-THETA-026492-P1-M2",
+    "region": "Stress Sector Beta",
+    "x": 1.7138560619473961,
+    "y": 0.0,
+    "z": -3.4474914646632793,
+    "sentinel": "Aggressive",
+    "fauna": "None",
+    "flora": "Dense",
+    "materials": "Copper, Aluminum, Titanium"
+  },
+  {
+    "type": "moon",
+    "name": "STRESS-THETA-026492-P1-M3",
+    "region": "Stress Sector Beta",
+    "x": -4.095190538273534,
+    "y": 0.0,
+    "z": 0.19853074128436737,
+    "sentinel": "Hostile",
+    "fauna": "Moderate",
+    "flora": "Sparse",
+    "materials": "Rare Earth Elements, Uranium"
+  },
+  {
+    "type": "moon",
+    "name": "STRESS-THETA-026492-P1-M4",
+    "region": "Stress Sector Beta",
+    "x": -0.741293104782669,
+    "y": 0.0,
+    "z": 4.286371954555702,
+    "sentinel": "Extreme",
+    "fauna": "None",
+    "flora": "Dense",
+    "materials": "Rare Earth Elements, Uranium"
+  },
+  {
+    "type": "moon",
+    "name": "STRESS-THETA-026492-P1-M5",
+    "region": "Stress Sector Beta",
+    "x": 0.7511483506745585,
+    "y": 0.0,
+    "z": 4.538256951218043,
+    "sentinel": "Extreme",
+    "fauna": "Rich",
+    "flora": "Moderate",
+    "materials": "Copper, Aluminum, Titanium"
+  },
+  {
+    "type": "planet",
+    "name": "STRESS-THETA-026492-P2",
+    "region": "Stress Sector Beta",
+    "x": 3.89138173949253,
+    "y": 0.0,
+    "z": 3.1396095549517127,
+    "sentinel": "Extreme",
+    "fauna": "Low",
+    "flora": "Lush vegetation",
+    "materials": "Diamonds, Emeralds, Exotic crystals",
+    "moons": [
+      {
+        "name": "STRESS-THETA-026492-P2-M1",
+        "sentinel": "Extreme",
+        "fauna": "None",
+        "flora": "Moderate",
+        "materials": "Activated Indium, Cadmium, Emeril",
+        "x": 10.930079767527332,
+        "y": 228.67695517148036,
+        "z": -123.87804067293989
+      },
+      {
+        "name": "STRESS-THETA-026492-P2-M2",
+        "sentinel": "Low",
+        "fauna": "Rich",
+        "flora": "Moderate",
+        "materials": "Gold, Platinum, Silver",
+        "x": 823.536326767846,
+        "y": 198.81602308265565,
+        "z": -40.818608951442684
+      },
+      {
+        "name": "STRESS-THETA-026492-P2-M3",
+        "sentinel": "Aggressive",
+        "fauna": "None",
+        "flora": "Lush vegetation",
+        "materials": "Rare Earth Elements, Uranium",
+        "x": 772.9126224093845,
+        "y": -112.82075708748664,
+        "z": 59.14697235492645
+      },
+      {
+        "name": "STRESS-THETA-026492-P2-M4",
+        "sentinel": "Hostile",
+        "fauna": "None",
+        "flora": "Moderate",
+        "materials": "Hydrogen, Helium, Deuterium",
+        "x": -606.0079421406235,
+        "y": -737.8082193422072,
+        "z": 226.0360754051373
+      }
+    ]
+  },
+  {
+    "type": "moon",
+    "name": "STRESS-THETA-026492-P2-M1",
+    "region": "Stress Sector Beta",
+    "x": -5.493790613947682,
+    "y": 0.0,
+    "z": 1.085479014122496,
+    "sentinel": "Extreme",
+    "fauna": "None",
+    "flora": "Moderate",
+    "materials": "Activated Indium, Cadmium, Emeril"
+  },
+  {
+    "type": "moon",
+    "name": "STRESS-THETA-026492-P2-M2",
+    "region": "Stress Sector Beta",
+    "x": -1.9044218178052537,
+    "y": 0.0,
+    "z": -5.531335963387807,
+    "sentinel": "Low",
+    "fauna": "Rich",
+    "flora": "Moderate",
+    "materials": "Gold, Platinum, Silver"
+  },
+  {
+    "type": "moon",
+    "name": "STRESS-THETA-026492-P2-M3",
+    "region": "Stress Sector Beta",
+    "x": 6.09837889184877,
+    "y": 0.0,
+    "z": 0.14062322515631953,
+    "sentinel": "Aggressive",
+    "fauna": "None",
+    "flora": "Lush vegetation",
+    "materials": "Rare Earth Elements, Uranium"
+  },
+  {
+    "type": "moon",
+    "name": "STRESS-THETA-026492-P2-M4",
+    "region": "Stress Sector Beta",
+    "x": -2.3154896111059085,
+    "y": 0.0,
+    "z": -5.912783427528916,
+    "sentinel": "Hostile",
+    "fauna": "None",
+    "flora": "Moderate",
+    "materials": "Hydrogen, Helium, Deuterium"
+  },
+  {
+    "type": "planet",
+    "name": "STRESS-THETA-026492-P3",
+    "region": "Stress Sector Beta",
+    "x": -1.406539052216675,
+    "y": 0.0,
+    "z": 6.857233253622733,
+    "sentinel": "Moderate",
+    "fauna": "Extreme diversity",
+    "flora": "None",
+    "materials": "Copper, Aluminum, Titanium",
+    "moons": [
+      {
+        "name": "STRESS-THETA-026492-P3-M1",
+        "sentinel": "None",
+        "fauna": "Moderate",
+        "flora": "Sparse",
+        "materials": "Diamonds, Emeralds, Exotic crystals",
+        "x": -397.0050837783592,
+        "y": 124.6829839116599,
+        "z": -98.9908470197698
+      },
+      {
+        "name": "STRESS-THETA-026492-P3-M2",
+        "sentinel": "Extreme",
+        "fauna": "None",
+        "flora": "Sparse",
+        "materials": "Rare Earth Elements, Uranium",
+        "x": -46.70372742172992,
+        "y": 221.13788164206107,
+        "z": -156.76917706723586
+      }
+    ]
+  },
+  {
+    "type": "moon",
+    "name": "STRESS-THETA-026492-P3-M1",
+    "region": "Stress Sector Beta",
+    "x": -3.368786156758507,
+    "y": 0.0,
+    "z": -6.812582464090416,
+    "sentinel": "None",
+    "fauna": "Moderate",
+    "flora": "Sparse",
+    "materials": "Diamonds, Emeralds, Exotic crystals"
+  },
+  {
+    "type": "moon",
+    "name": "STRESS-THETA-026492-P3-M2",
+    "region": "Stress Sector Beta",
+    "x": 7.599399373166364,
+    "y": 0.0,
+    "z": 1.9676455898150629,
+    "sentinel": "Extreme",
+    "fauna": "None",
+    "flora": "Sparse",
+    "materials": "Rare Earth Elements, Uranium"
+  },
+  {
+    "type": "planet",
+    "name": "STRESS-THETA-026492-P4",
+    "region": "Stress Sector Beta",
+    "x": -7.714307198434454,
+    "y": 0.0,
+    "z": 4.635673030767202,
+    "sentinel": "Aggressive",
+    "fauna": "Abundant",
+    "flora": "Moderate",
+    "materials": "Activated Indium, Cadmium, Emeril",
+    "moons": [
+      {
+        "name": "STRESS-THETA-026492-P4-M1",
+        "sentinel": "Low",
+        "fauna": "Abundant",
+        "flora": "Lush vegetation",
+        "materials": "Diamonds, Emeralds, Exotic crystals",
+        "x": 375.96025165674314,
+        "y": -255.4594766077696,
+        "z": -151.16716780497268
+      },
+      {
+        "name": "STRESS-THETA-026492-P4-M2",
+        "sentinel": "Aggressive",
+        "fauna": "Low",
+        "flora": "Moderate",
+        "materials": "Activated Indium, Cadmium, Emeril",
+        "x": -127.08588043253383,
+        "y": -818.8060824362508,
+        "z": 85.4530426619803
+      },
+      {
+        "name": "STRESS-THETA-026492-P4-M3",
+        "sentinel": "Moderate",
+        "fauna": "Low",
+        "flora": "Sparse",
+        "materials": "Rare Earth Elements, Uranium",
+        "x": 630.2892039253891,
+        "y": -828.3377614046847,
+        "z": 56.42308170212709
+      },
+      {
+        "name": "STRESS-THETA-026492-P4-M4",
+        "sentinel": "Aggressive",
+        "fauna": "Abundant",
+        "flora": "Abundant",
+        "materials": "Hydrogen, Helium, Deuterium",
+        "x": -870.5629401627338,
+        "y": -275.23946890301283,
+        "z": -8.333207187346034
+      }
+    ]
+  },
+  {
+    "type": "moon",
+    "name": "STRESS-THETA-026492-P4-M1",
+    "region": "Stress Sector Beta",
+    "x": 8.959458054090318,
+    "y": 0.0,
+    "z": -3.4479140617184973,
+    "sentinel": "Low",
+    "fauna": "Abundant",
+    "flora": "Lush vegetation",
+    "materials": "Diamonds, Emeralds, Exotic crystals"
+  },
+  {
+    "type": "moon",
+    "name": "STRESS-THETA-026492-P4-M2",
+    "region": "Stress Sector Beta",
+    "x": -8.556280896757706,
+    "y": 0.0,
+    "z": -4.8798111864885865,
+    "sentinel": "Aggressive",
+    "fauna": "Low",
+    "flora": "Moderate",
+    "materials": "Activated Indium, Cadmium, Emeril"
+  },
+  {
+    "type": "moon",
+    "name": "STRESS-THETA-026492-P4-M3",
+    "region": "Stress Sector Beta",
+    "x": -4.03844144139467,
+    "y": 0.0,
+    "z": 9.257482958365417,
+    "sentinel": "Moderate",
+    "fauna": "Low",
+    "flora": "Sparse",
+    "materials": "Rare Earth Elements, Uranium"
+  },
+  {
+    "type": "moon",
+    "name": "STRESS-THETA-026492-P4-M4",
+    "region": "Stress Sector Beta",
+    "x": -8.993536913995953,
+    "y": 0.0,
+    "z": 5.122381650813628,
+    "sentinel": "Aggressive",
+    "fauna": "Abundant",
+    "flora": "Abundant",
+    "materials": "Hydrogen, Helium, Deuterium"
+  },
+  {
+    "type": "planet",
+    "name": "STRESS-THETA-026492-P5",
+    "region": "Stress Sector Beta",
+    "x": -8.787186774158663,
+    "y": 0.0,
+    "z": -6.617049840831719,
+    "sentinel": "Aggressive",
+    "fauna": "Extreme diversity",
+    "flora": "None",
+    "materials": "Hydrogen, Helium, Deuterium",
+    "moons": [
+      {
+        "name": "STRESS-THETA-026492-P5-M1",
+        "sentinel": "Hostile",
+        "fauna": "None",
+        "flora": "Dense",
+        "materials": "Iron, Carbon, Silicon",
+        "x": -611.8124325536562,
+        "y": -786.565836365275,
+        "z": -219.0977262978612
+      },
+      {
+        "name": "STRESS-THETA-026492-P5-M2",
+        "sentinel": "Aggressive",
+        "fauna": "None",
+        "flora": "Sparse",
+        "materials": "Hydrogen, Helium, Deuterium",
+        "x": 707.318423684397,
+        "y": -550.7021442495184,
+        "z": -204.08436377694744
+      },
+      {
+        "name": "STRESS-THETA-026492-P5-M3",
+        "sentinel": "None",
+        "fauna": "Low",
+        "flora": "Dense",
+        "materials": "Hydrogen, Helium, Deuterium",
+        "x": -871.5351869030778,
+        "y": 682.6798006228753,
+        "z": 43.69949982016527
+      }
+    ]
+  },
+  {
+    "type": "moon",
+    "name": "STRESS-THETA-026492-P5-M1",
+    "region": "Stress Sector Beta",
+    "x": -1.4586588613734792,
+    "y": 0.0,
+    "z": -11.507923979855645,
+    "sentinel": "Hostile",
+    "fauna": "None",
+    "flora": "Dense",
+    "materials": "Iron, Carbon, Silicon"
+  },
+  {
+    "type": "moon",
+    "name": "STRESS-THETA-026492-P5-M2",
+    "region": "Stress Sector Beta",
+    "x": 1.6528619854794229,
+    "y": 0.0,
+    "z": 11.734161548954276,
+    "sentinel": "Aggressive",
+    "fauna": "None",
+    "flora": "Sparse",
+    "materials": "Hydrogen, Helium, Deuterium"
+  },
+  {
+    "type": "moon",
+    "name": "STRESS-THETA-026492-P5-M3",
+    "region": "Stress Sector Beta",
+    "x": -8.136919171205362,
+    "y": 0.0,
+    "z": -8.95547577749338,
+    "sentinel": "None",
+    "fauna": "Low",
+    "flora": "Dense",
+    "materials": "Hydrogen, Helium, Deuterium"
+  },
+  {
+    "type": "planet",
+    "name": "STRESS-THETA-026492-P6",
+    "region": "Stress Sector Beta",
+    "x": 8.923477171466585,
+    "y": 0.0,
+    "z": 9.453653006659104,
+    "sentinel": "Aggressive",
+    "fauna": "None",
+    "flora": "Lush vegetation",
+    "materials": "Copper, Aluminum, Titanium",
+    "moons": [
+      {
+        "name": "STRESS-THETA-026492-P6-M1",
+        "sentinel": "Hostile",
+        "fauna": "Extreme diversity",
+        "flora": "Dense",
+        "materials": "Diamonds, Emeralds, Exotic crystals",
+        "x": -302.347699046603,
+        "y": -582.071066078842,
+        "z": -128.978174562293
+      },
+      {
+        "name": "STRESS-THETA-026492-P6-M2",
+        "sentinel": "Low",
+        "fauna": "Rich",
+        "flora": "Abundant",
+        "materials": "Activated Indium, Cadmium, Emeril",
+        "x": 149.41489233292805,
+        "y": -532.3428131183772,
+        "z": -217.47292940228937
+      },
+      {
+        "name": "STRESS-THETA-026492-P6-M3",
+        "sentinel": "None",
+        "fauna": "Extreme diversity",
+        "flora": "Dense",
+        "materials": "Diamonds, Emeralds, Exotic crystals",
+        "x": -273.3475638584348,
+        "y": -815.7441956398023,
+        "z": 5.326693739300282
+      }
+    ]
+  },
+  {
+    "type": "moon",
+    "name": "STRESS-THETA-026492-P6-M1",
+    "region": "Stress Sector Beta",
+    "x": -6.481981280526946,
+    "y": 0.0,
+    "z": 11.955915635320377,
+    "sentinel": "Hostile",
+    "fauna": "Extreme diversity",
+    "flora": "Dense",
+    "materials": "Diamonds, Emeralds, Exotic crystals"
+  },
+  {
+    "type": "moon",
+    "name": "STRESS-THETA-026492-P6-M2",
+    "region": "Stress Sector Beta",
+    "x": -7.488585572079652,
+    "y": 0.0,
+    "z": 11.650904948957418,
+    "sentinel": "Low",
+    "fauna": "Rich",
+    "flora": "Abundant",
+    "materials": "Activated Indium, Cadmium, Emeril"
+  },
+  {
+    "type": "moon",
+    "name": "STRESS-THETA-026492-P6-M3",
+    "region": "Stress Sector Beta",
+    "x": 13.055127679304757,
+    "y": 0.0,
+    "z": -5.326691400583553,
+    "sentinel": "None",
+    "fauna": "Extreme diversity",
+    "flora": "Dense",
+    "materials": "Diamonds, Emeralds, Exotic crystals"
+  },
+  {
+    "type": "planet",
+    "name": "STRESS-THETA-026492-P7",
+    "region": "Stress Sector Beta",
+    "x": 14.996273420507986,
+    "y": 0.0,
+    "z": 0.33434039146603917,
+    "sentinel": "None",
+    "fauna": "Extreme diversity",
+    "flora": "Dense",
+    "materials": "Activated Indium, Cadmium, Emeril",
+    "moons": [
+      {
+        "name": "STRESS-THETA-026492-P7-M1",
+        "sentinel": "Aggressive",
+        "fauna": "None",
+        "flora": "Sparse",
+        "materials": "Rare Earth Elements, Uranium",
+        "x": 22.995500457402727,
+        "y": 686.8710170860013,
+        "z": -234.03713554466833
+      },
+      {
+        "name": "STRESS-THETA-026492-P7-M2",
+        "sentinel": "Aggressive",
+        "fauna": "Low",
+        "flora": "Moderate",
+        "materials": "Diamonds, Emeralds, Exotic crystals",
+        "x": -160.04148758152837,
+        "y": -150.4566314770783,
+        "z": -142.09936745837285
+      },
+      {
+        "name": "STRESS-THETA-026492-P7-M3",
+        "sentinel": "None",
+        "fauna": "Moderate",
+        "flora": "Lush vegetation",
+        "materials": "Copper, Aluminum, Titanium",
+        "x": -959.6307327968658,
+        "y": -27.41295684040074,
+        "z": 37.46311967530875
+      }
+    ]
+  },
+  {
+    "type": "moon",
+    "name": "STRESS-THETA-026492-P7-M1",
+    "region": "Stress Sector Beta",
+    "x": 7.057187517297528,
+    "y": 0.0,
+    "z": -13.912444226148759,
+    "sentinel": "Aggressive",
+    "fauna": "None",
+    "flora": "Sparse",
+    "materials": "Rare Earth Elements, Uranium"
+  },
+  {
+    "type": "moon",
+    "name": "STRESS-THETA-026492-P7-M2",
+    "region": "Stress Sector Beta",
+    "x": 10.613031349994554,
+    "y": 0.0,
+    "z": -11.772258303487598,
+    "sentinel": "Aggressive",
+    "fauna": "Low",
+    "flora": "Moderate",
+    "materials": "Diamonds, Emeralds, Exotic crystals"
+  },
+  {
+    "type": "moon",
+    "name": "STRESS-THETA-026492-P7-M3",
+    "region": "Stress Sector Beta",
+    "x": -15.210747019683346,
+    "y": 0.0,
+    "z": 5.276663254670911,
+    "sentinel": "None",
+    "fauna": "Moderate",
+    "flora": "Lush vegetation",
+    "materials": "Copper, Aluminum, Titanium"
+  },
+  {
+    "type": "planet",
+    "name": "STRESS-THETA-026492-P8",
+    "region": "Stress Sector Beta",
+    "x": -2.255919787082307,
+    "y": 0.0,
+    "z": 16.84965358439901,
+    "sentinel": "Aggressive",
+    "fauna": "Moderate",
+    "flora": "Sparse",
+    "materials": "Activated Indium, Cadmium, Emeril",
+    "moons": [
+      {
+        "name": "STRESS-THETA-026492-P8-M1",
+        "sentinel": "Aggressive",
+        "fauna": "Low",
+        "flora": "Dense",
+        "materials": "Copper, Aluminum, Titanium",
+        "x": 29.341246379767426,
+        "y": -945.0946920452319,
+        "z": 202.12455582873736
+      },
+      {
+        "name": "STRESS-THETA-026492-P8-M2",
+        "sentinel": "Aggressive",
+        "fauna": "Rich",
+        "flora": "Dense",
+        "materials": "Diamonds, Emeralds, Exotic crystals",
+        "x": 811.779414523545,
+        "y": 582.2956171198639,
+        "z": -41.18883010410167
+      },
+      {
+        "name": "STRESS-THETA-026492-P8-M3",
+        "sentinel": "Moderate",
+        "fauna": "Rich",
+        "flora": "Dense",
+        "materials": "Iron, Carbon, Silicon",
+        "x": 994.1178305302744,
+        "y": -293.925140134431,
+        "z": 38.909149963017796
+      },
+      {
+        "name": "STRESS-THETA-026492-P8-M4",
+        "sentinel": "None",
+        "fauna": "None",
+        "flora": "Moderate",
+        "materials": "Gold, Platinum, Silver",
+        "x": 851.5731961123786,
+        "y": 749.2524058227798,
+        "z": 126.1479983126103
+      },
+      {
+        "name": "STRESS-THETA-026492-P8-M5",
+        "sentinel": "Hostile",
+        "fauna": "Abundant",
+        "flora": "None",
+        "materials": "Gold, Platinum, Silver",
+        "x": -240.73325250109588,
+        "y": -231.32962289151476,
+        "z": 154.8368166703898
+      }
+    ]
+  },
+  {
+    "type": "moon",
+    "name": "STRESS-THETA-026492-P8-M1",
+    "region": "Stress Sector Beta",
+    "x": -11.579584958874113,
+    "y": 0.0,
+    "z": 13.254177159681262,
+    "sentinel": "Aggressive",
+    "fauna": "Low",
+    "flora": "Dense",
+    "materials": "Copper, Aluminum, Titanium"
+  },
+  {
+    "type": "moon",
+    "name": "STRESS-THETA-026492-P8-M2",
+    "region": "Stress Sector Beta",
+    "x": 8.999940634520021,
+    "y": 0.0,
+    "z": 15.41504358005891,
+    "sentinel": "Aggressive",
+    "fauna": "Rich",
+    "flora": "Dense",
+    "materials": "Diamonds, Emeralds, Exotic crystals"
+  },
+  {
+    "type": "moon",
+    "name": "STRESS-THETA-026492-P8-M3",
+    "region": "Stress Sector Beta",
+    "x": 15.504278382893308,
+    "y": 0.0,
+    "z": 9.339558438478088,
+    "sentinel": "Moderate",
+    "fauna": "Rich",
+    "flora": "Dense",
+    "materials": "Iron, Carbon, Silicon"
+  },
+  {
+    "type": "moon",
+    "name": "STRESS-THETA-026492-P8-M4",
+    "region": "Stress Sector Beta",
+    "x": -12.567786164005403,
+    "y": 0.0,
+    "z": -13.370611464545457,
+    "sentinel": "None",
+    "fauna": "None",
+    "flora": "Moderate",
+    "materials": "Gold, Platinum, Silver"
+  },
+  {
+    "type": "moon",
+    "name": "STRESS-THETA-026492-P8-M5",
+    "region": "Stress Sector Beta",
+    "x": -12.832477198471533,
+    "y": 0.0,
+    "z": 13.464305735934111,
+    "sentinel": "Hostile",
+    "fauna": "Abundant",
+    "flora": "None",
+    "materials": "Gold, Platinum, Silver"
+  },
+  {
+    "type": "planet",
+    "name": "STRESS-THETA-026492-P9",
+    "region": "Stress Sector Beta",
+    "x": 18.18708899600992,
+    "y": 0.0,
+    "z": -5.49816277052752,
+    "sentinel": "Hostile",
+    "fauna": "Extreme diversity",
+    "flora": "Dense",
+    "materials": "Rare Earth Elements, Uranium",
+    "moons": [
+      {
+        "name": "STRESS-THETA-026492-P9-M1",
+        "sentinel": "Hostile",
+        "fauna": "Low",
+        "flora": "Sparse",
+        "materials": "Hydrogen, Helium, Deuterium",
+        "x": 738.0272426661547,
+        "y": 529.6862764032692,
+        "z": 22.97091484469894
+      },
+      {
+        "name": "STRESS-THETA-026492-P9-M2",
+        "sentinel": "Aggressive",
+        "fauna": "Low",
+        "flora": "Abundant",
+        "materials": "Gold, Platinum, Silver",
+        "x": -703.7222218094961,
+        "y": 319.6681486789164,
+        "z": 159.86825560103216
+      },
+      {
+        "name": "STRESS-THETA-026492-P9-M3",
+        "sentinel": "Extreme",
+        "fauna": "None",
+        "flora": "Sparse",
+        "materials": "Activated Indium, Cadmium, Emeril",
+        "x": -424.015095211445,
+        "y": -349.55080348387526,
+        "z": -198.23344360899648
+      },
+      {
+        "name": "STRESS-THETA-026492-P9-M4",
+        "sentinel": "Aggressive",
+        "fauna": "None",
+        "flora": "Sparse",
+        "materials": "Rare Earth Elements, Uranium",
+        "x": -106.06226357720948,
+        "y": 226.4232983894958,
+        "z": 61.13948189624773
+      }
+    ]
+  },
+  {
+    "type": "moon",
+    "name": "STRESS-THETA-026492-P9-M1",
+    "region": "Stress Sector Beta",
+    "x": 15.902287472752874,
+    "y": 0.0,
+    "z": 11.457628599929699,
+    "sentinel": "Hostile",
+    "fauna": "Low",
+    "flora": "Sparse",
+    "materials": "Hydrogen, Helium, Deuterium"
+  },
+  {
+    "type": "moon",
+    "name": "STRESS-THETA-026492-P9-M2",
+    "region": "Stress Sector Beta",
+    "x": -16.478865774696644,
+    "y": 0.0,
+    "z": -11.066593097224258,
+    "sentinel": "Aggressive",
+    "fauna": "Low",
+    "flora": "Abundant",
+    "materials": "Gold, Platinum, Silver"
+  },
+  {
+    "type": "moon",
+    "name": "STRESS-THETA-026492-P9-M3",
+    "region": "Stress Sector Beta",
+    "x": -4.827204752802163,
+    "y": 0.0,
+    "z": -19.511742471509926,
+    "sentinel": "Extreme",
+    "fauna": "None",
+    "flora": "Sparse",
+    "materials": "Activated Indium, Cadmium, Emeril"
+  },
+  {
+    "type": "moon",
+    "name": "STRESS-THETA-026492-P9-M4",
+    "region": "Stress Sector Beta",
+    "x": 19.79779338424699,
+    "y": 0.0,
+    "z": 4.708489897479464,
+    "sentinel": "Aggressive",
+    "fauna": "None",
+    "flora": "Sparse",
+    "materials": "Rare Earth Elements, Uranium"
+  }
+];
+        window.VIEW_MODE = 'system';
+        window.REGION_NAME = 'STRESS-THETA-026492';
+        window.SYSTEM_META = {
+  "name": "STRESS-THETA-026492",
+  "region": "Stress Sector Beta",
+  "attributes": "Test system #26492: Resource rich",
+  "x": -176.0735626220703,
+  "y": -272.9927978515625,
+  "z": 41.13554763793945
+};
+        // jshint ignore:end
+    </script>
+
+    <!-- Moon visualization system -->
+    <script>
+/**
+ * Moon Visualization for Three.js 3D Star Map
+ * 
+ * Renders moons as orbiting objects around planets with interactive
+ * details and orbital mechanics visualization.
+ */
+
+class MoonOrbit {
+    /**
+     * Calculate moon orbital position based on time.
+     * 
+     * @param {Object} moon - Moon data object
+     * @param {Object} planet - Parent planet position
+     * @param {number} time - Current time in seconds
+     * @returns {THREE.Vector3} Moon position in 3D space
+     */
+    constructor(moon, planet, orbit_speed = 1.0) {
+        this.moon = moon;
+        this.planet = planet;
+        this.orbit_speed = orbit_speed;
+        this.time_offset = Math.random() * Math.PI * 2; // Random start phase
+        
+        // Orbital parameters
+        this.semi_major_axis = (moon.orbit_distance || 2.0);
+        this.eccentricity = moon.eccentricity || 0.05;
+        this.inclination = moon.inclination || 0;
+    }
+    
+    /**
+     * Get moon position at specific time.
+     * 
+     * @param {number} elapsed_time - Time in seconds
+     * @returns {THREE.Vector3} Position relative to planet
+     */
+    getPosition(elapsed_time) {
+        const angle = (elapsed_time * this.orbit_speed + this.time_offset) % (Math.PI * 2);
+        
+        // Elliptical orbit using Kepler's equation
+        const radius = this.semi_major_axis * (1 - this.eccentricity * Math.cos(angle));
+        
+        // Position in orbital plane
+        let x = radius * Math.cos(angle);
+        let y = 0;
+        let z = radius * Math.sin(angle);
+        
+        // Apply inclination
+        if (this.inclination > 0) {
+            const cos_i = Math.cos(this.inclination);
+            const sin_i = Math.sin(this.inclination);
+            const new_y = z * sin_i;
+            const new_z = z * cos_i;
+            y = new_y;
+            z = new_z;
+        }
+        
+        return new THREE.Vector3(x, y, z);
+    }
+}
+
+class Moon3D {
+    /**
+     * Represents a single moon object in the 3D scene.
+     * 
+     * @param {Object} moon - Moon data from system
+     * @param {THREE.Object3D} parent_group - Parent planet's group
+     * @param {number} size - Sphere radius
+     */
+    constructor(moon, parent_group, size = 0.2) {
+        this.moon = moon;
+        this.size = size;
+        
+        // Create moon geometry
+        const geometry = new THREE.SphereGeometry(size, 16, 16);
+        const material = new THREE.MeshPhongMaterial({
+            color: moon.color || 0xb4b4c8,
+            shininess: 10,
+            emissive: 0x333333
+        });
+        
+        this.mesh = new THREE.Mesh(geometry, material);
+        this.mesh.userData = { type: 'moon', data: moon };
+        parent_group.add(this.mesh);
+        
+        // Create orbit line
+        this.orbit_line = this._createOrbitLine(moon.orbit_distance || 2.0);
+        parent_group.add(this.orbit_line);
+        
+        // Orbital mechanics
+        this.orbit = new MoonOrbit(moon, parent_group, moon.orbit_speed || 1.0);
+    }
+    
+    /**
+     * Create visual orbit path line.
+     * 
+     * @param {number} radius - Orbital radius
+     * @returns {THREE.LineLoop} Orbit visualization
+     */
+    _createOrbitLine(radius) {
+        const points = [];
+        const segments = 64;
+        
+        for (let i = 0; i <= segments; i++) {
+            const angle = (i / segments) * Math.PI * 2;
+            const x = radius * Math.cos(angle);
+            const z = radius * Math.sin(angle);
+            points.push(new THREE.Vector3(x, 0, z));
+        }
+        
+        const geometry = new THREE.BufferGeometry().setFromPoints(points);
+        const material = new THREE.LineBasicMaterial({
+            color: 0x888888,
+            transparent: true,
+            opacity: 0.3,
+            linewidth: 1
+        });
+        
+        return new THREE.LineLoop(geometry, material);
+    }
+    
+    /**
+     * Update moon position for given time.
+     * 
+     * @param {number} elapsed_time - Elapsed time in seconds
+     */
+    update(elapsed_time) {
+        const pos = this.orbit.getPosition(elapsed_time);
+        this.mesh.position.copy(pos);
+        
+        // Subtle rotation
+        this.mesh.rotation.x += 0.001;
+        this.mesh.rotation.y += 0.002;
+    }
+}
+
+class MoonRenderer {
+    /**
+     * Manager for rendering all moons in the scene.
+     * 
+     * Handles:
+     * - Moon creation and positioning
+     * - Orbital updates
+     * - Interactive selection
+     * - Detail overlay display
+     * - Performance optimization
+     */
+    constructor(scene, camera, raycaster = null) {
+        this.scene = scene;
+        this.camera = camera;
+        this.raycaster = raycaster || new THREE.Raycaster();
+        this.mouse = new THREE.Vector2();
+        
+        this.moons = [];
+        this.planet_groups = new Map();
+        this.start_time = Date.now() / 1000;
+        
+        this.selected_moon = null;
+        this.detail_overlay = null;
+        
+        // Performance optimization
+        this.update_frequency = 1; // Update every N frames
+        this.frame_count = 0;
+    }
+    
+    /**
+     * Add moon to scene around planet.
+     * 
+     * @param {THREE.Object3D} planet_mesh - Planet mesh
+     * @param {Object} moon_data - Moon data object
+     * @param {number} size - Moon sphere size
+     */
+    addMoon(planet_mesh, moon_data, size = 0.2) {
+        // Create or get planet group
+        let planet_group = this.planet_groups.get(planet_mesh.uuid);
+        if (!planet_group) {
+            planet_group = new THREE.Group();
+            planet_group.position.copy(planet_mesh.position);
+            this.scene.add(planet_group);
+            this.planet_groups.set(planet_mesh.uuid, planet_group);
+        }
+        
+        // Create moon3D and add to tracking
+        const moon3d = new Moon3D(moon_data, planet_group, size);
+        this.moons.push({
+            mesh: moon3d.mesh,
+            orbit_line: moon3d.orbit_line,
+            object: moon3d,
+            planet: planet_mesh
+        });
+    }
+    
+    /**
+     * Update all moon positions and check for interactions.
+     * 
+     * @param {number} current_time - Optional current time (uses elapsed by default)
+     */
+    update(current_time = null) {
+        const elapsed = (current_time !== null) ? current_time : (Date.now() / 1000 - this.start_time);
+        
+        // Update moon positions
+        for (const moon of this.moons) {
+            moon.object.update(elapsed);
+        }
+        
+        // Performance: Only check raycast every N frames
+        this.frame_count++;
+        if (this.frame_count % this.update_frequency === 0) {
+            this._updateInteractions();
+        }
+    }
+    
+    /**
+     * Handle mouse interactions with moons.
+     * 
+     * @private
+     */
+    _updateInteractions() {
+        if (typeof mouse === 'undefined') return;
+        
+        // Convert mouse position to normalized device coordinates
+        this.mouse.x = (mouse.x / window.innerWidth) * 2 - 1;
+        this.mouse.y = -(mouse.y / window.innerHeight) * 2 + 1;
+        
+        // Get all moon meshes for raycasting
+        const moon_meshes = this.moons.map(m => m.mesh);
+        
+        // Update raycaster
+        this.raycaster.setFromCamera(this.mouse, this.camera);
+        
+        // Check for intersections
+        const intersects = this.raycaster.intersectObjects(moon_meshes);
+        
+        if (intersects.length > 0) {
+            this.selectMoon(intersects[0].object);
+        }
+    }
+    
+    /**
+     * Select moon and show detail overlay.
+     * 
+     * @param {THREE.Mesh} mesh - Moon mesh to select
+     */
+    selectMoon(mesh) {
+        // Deselect previous
+        if (this.selected_moon) {
+            this.selected_moon.mesh.material.emissive.setHex(0x333333);
+        }
+        
+        // Select new
+        this.selected_moon = this.moons.find(m => m.mesh === mesh);
+        if (this.selected_moon) {
+            this.selected_moon.mesh.material.emissive.setHex(0xff9900);
+            this._showDetail(this.selected_moon);
+            this._adjustCamera(this.selected_moon);
+        }
+    }
+    
+    /**
+     * Display moon information overlay.
+     * 
+     * @private
+     */
+    _showDetail(moon_info) {
+        const moon = moon_info.object.moon;
+        
+        let detail_html = `<div id="moon-detail">
+            <h4>${moon.name || 'Unknown Moon'}</h4>
+            <p><strong>Orbit:</strong> ${moon.orbit_distance || 'N/A'} AU</p>
+            <p><strong>Size:</strong> ${moon.size || 'Unknown'}</p>
+            <p><strong>Type:</strong> ${moon.type || 'Rocky'}</p>
+            <p><strong>Atmosphere:</strong> ${moon.atmosphere || 'None'}</p>
+        </div>`;
+        
+        // Update or create overlay
+        if (this.detail_overlay) {
+            this.detail_overlay.innerHTML = detail_html;
+        } else {
+            this.detail_overlay = document.createElement('div');
+            this.detail_overlay.innerHTML = detail_html;
+            this.detail_overlay.style.cssText = `
+                position: fixed;
+                top: 120px;
+                right: 20px;
+                background: rgba(10, 20, 40, 0.9);
+                border: 2px solid rgba(0, 206, 209, 0.6);
+                border-radius: 8px;
+                padding: 15px;
+                color: #e0e0e0;
+                font-family: Rajdhani, sans-serif;
+                z-index: 100;
+                max-width: 280px;
+                backdrop-filter: blur(10px);
+            `;
+            document.body.appendChild(this.detail_overlay);
+        }
+    }
+    
+    /**
+     * Adjust camera to focus on selected moon.
+     * 
+     * @private
+     */
+    _adjustCamera(moon_info) {
+        const target = moon_info.mesh.position.clone();
+        target.add(moon_info.planet.position);
+        
+        const direction = this.camera.position.clone().sub(target).normalize();
+        const new_pos = target.clone().add(direction.multiplyScalar(10));
+        
+        this.camera.position.lerp(new_pos, 0.1);
+        this.camera.lookAt(target);
+    }
+    
+    /**
+     * Get statistics about moons in scene.
+     * 
+     * @returns {Object} Statistics object
+     */
+    getStats() {
+        return {
+            total_moons: this.moons.length,
+            total_orbits: this.moons.filter(m => m.orbit_line).length,
+            selected_moon: this.selected_moon?.object?.moon?.name || null
+        };
+    }
+    
+    /**
+     * Deselect current moon.
+     */
+    deselectMoon() {
+        if (this.selected_moon) {
+            this.selected_moon.mesh.material.emissive.setHex(0x333333);
+            this.selected_moon = null;
+        }
+        if (this.detail_overlay) {
+            this.detail_overlay.remove();
+            this.detail_overlay = null;
+        }
+    }
+}
+
+// Export for use in map generation
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { MoonRenderer, Moon3D, MoonOrbit };
+}
+</script>
+
+    <!-- Main map viewer script -->
+    <script src="static/js/map-viewer.js"></script>
+</body>
+</html>
