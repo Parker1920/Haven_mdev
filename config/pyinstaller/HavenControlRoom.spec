@@ -2,7 +2,7 @@
 
 
 a = Analysis(
-    ['C:\\Users\\parke\\OneDrive\\Desktop\\Haven_Mdev\\src\\control_room.py'],
+    ['C:\\Users\\parke\\OneDrive\\Desktop\\Haven_mdev\\src\\control_room.py'],
     pathex=[],
     binaries=[],
     datas=[],

@@ -207,6 +207,11 @@ def copy_static_files(output_dir: Path) -> None:
     Args:
         output_dir: Destination directory for the generated HTML files.
                    Static files will be copied to output_dir/static/
+
+    Note:
+        Uses dirs_exist_ok=True to overwrite existing files without removing
+        the directory first. This prevents permission errors if files are
+        locked (e.g., by a browser viewing the map).
     """
     src_static = Path(__file__).parent / 'static'
     dest_static = output_dir / 'static'
@@ -215,13 +220,24 @@ def copy_static_files(output_dir: Path) -> None:
         logging.warning(f"Static source directory not found: {src_static}")
         return
 
-    # Copy the entire static directory
-    if dest_static.exists():
-        # Remove existing static directory to ensure clean copy
-        shutil.rmtree(dest_static)
-
-    shutil.copytree(src_static, dest_static)
-    logging.info(f"Copied static files from {src_static} to {dest_static}")
+    # Copy files, overwriting if they exist (dirs_exist_ok available in Python 3.8+)
+    try:
+        shutil.copytree(src_static, dest_static, dirs_exist_ok=True)
+        logging.info(f"Copied static files from {src_static} to {dest_static}")
+    except Exception as e:
+        logging.error(f"Error copying static files: {e}")
+        # Try individual file copy as fallback
+        try:
+            dest_static.mkdir(parents=True, exist_ok=True)
+            for src_file in src_static.rglob('*'):
+                if src_file.is_file():
+                    rel_path = src_file.relative_to(src_static)
+                    dest_file = dest_static / rel_path
+                    dest_file.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(src_file, dest_file)
+            logging.info(f"Copied static files individually (fallback method)")
+        except Exception as e2:
+            logging.error(f"Fallback copy also failed: {e2}")
 
 
 # Old embedded template removed - now using external files
