@@ -525,12 +525,6 @@ class SystemEntryWizard(ctk.CTk):
                                                    fg_color=COLORS['bg_card'], button_color=COLORS['accent_cyan'])
         self.edit_system_menu.pack(side="left", fill="x", expand=True)
 
-        # Convert legacy button
-        ctk.CTkButton(edit_row, text="↻ Convert Legacy",
-                      command=self.convert_legacy_data,
-                      height=36, width=160,
-                      fg_color=COLORS['accent_cyan'], hover_color=COLORS['glow']).pack(side="right")
-        
         # Basic info
         basic_card = GlassCard(scroll, title="📝 System Information")
         basic_card.pack(fill="x", pady=(0, 20))
@@ -875,60 +869,6 @@ class SystemEntryWizard(ctk.CTk):
             logging.exception("Save failed")
             messagebox.showerror("Error", "Failed to save system!")
 
-    def convert_legacy_data(self):
-        try:
-            if not self.data_file.exists():
-                messagebox.showinfo("Info", "No data.json file found to convert.")
-                return
-            with open(self.data_file, 'r', encoding='utf-8') as f:
-                raw = json.load(f)
-            # Already top-level map?
-            if isinstance(raw, dict):
-                vals = [v for k,v in raw.items() if k != '_meta']
-                if vals and all(isinstance(v, dict) for v in vals) and any(('x' in v or 'y' in v or 'z' in v or 'planets' in v) for v in vals):
-                    messagebox.showinfo("Info", "Data is already in the new format.")
-                    return
-            # Build new map
-            out = {"_meta": (raw.get('_meta') if isinstance(raw, dict) else {"version":"3.0.0"})}
-            def put(name, it):
-                if not isinstance(it, dict):
-                    return
-                cp = dict(it); cp.pop('type', None)
-                if 'name' not in cp:
-                    cp['name'] = name
-                out[name] = cp
-            if isinstance(raw, dict) and isinstance(raw.get('systems'), dict):
-                for name, it in raw['systems'].items():
-                    put(name, it)
-            elif isinstance(raw, dict) and isinstance(raw.get('data'), list):
-                for it in raw['data']:
-                    if isinstance(it, dict) and it.get('type') != 'region':
-                        put(it.get('name') or f"SYS_{int(time.time())}", it)
-            elif isinstance(raw, dict):
-                # Maybe region map
-                for region, arr in raw.items():
-                    if region == '_meta':
-                        continue
-                    if isinstance(arr, list):
-                        for it in arr:
-                            if isinstance(it, dict) and it.get('type') != 'region':
-                                if 'region' not in it:
-                                    it = dict(it); it['region'] = region
-                                put(it.get('name') or f"SYS_{int(time.time())}", it)
-            # Backup
-            backup = self.data_file.with_suffix('.json.bak')
-            try:
-                shutil.copy2(self.data_file, backup)
-            except Exception:
-                pass
-            with open(self.data_file, 'w', encoding='utf-8') as f:
-                json.dump(out, f, indent=2)
-            # Refresh dropdown
-            self.edit_system_menu.configure(values=["(New System)"] + self.get_existing_systems())
-            messagebox.showinfo("Success", "Legacy data converted to the new format (top-level map).")
-        except Exception:
-            logging.exception("Conversion failed")
-            messagebox.showerror("Error", "Failed to convert legacy data.")
 
 
 def main():

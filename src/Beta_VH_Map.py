@@ -619,20 +619,26 @@ THREEJS_TEMPLATE = r"""<!DOCTYPE html>
             transform: translateY(-1px);
         }
 
-        /* Download logs button */
+        /* Download logs button (now in settings panel) */
         #download-logs {
-            position: fixed;
-            right: 20px;
-            bottom: 20px;
-            z-index: 110;
-            background: rgba(0, 20, 40, 0.85);
+            width: 100%;
+            padding: 12px 20px;
+            background: rgba(0, 20, 40, 0.6);
             color: rgba(0, 206, 209, 1);
             border: 1px solid rgba(0, 206, 209, 0.4);
-            padding: 10px 14px;
             border-radius: 6px;
             cursor: pointer;
             font-family: 'Rajdhani', sans-serif;
+            font-size: 13px;
+            font-weight: 600;
             letter-spacing: 1px;
+            transition: all 0.2s ease;
+            text-align: center;
+        }
+
+        #download-logs:hover {
+            background: rgba(0, 206, 209, 0.15);
+            border-color: rgba(0, 206, 209, 0.6);
         }
     </style>
 </head>
@@ -650,7 +656,6 @@ THREEJS_TEMPLATE = r"""<!DOCTYPE html>
     
     <!-- Back button (shown in System View) -->
     <button id="back-btn" style="display: none; position: fixed; top: 10px; left: 10px; padding: 10px 20px; background: rgba(0, 206, 209, 0.2); color: rgba(0, 206, 209, 1); border: 2px solid rgba(0, 206, 209, 0.6); border-radius: 4px; font-family: 'Rajdhani', sans-serif; font-weight: 600; font-size: 16px; z-index: 1000; cursor: pointer; backdrop-filter: blur(10px);">← Back to Galaxy View</button>
-    <button id="download-logs" title="Download browser logs">Download Logs</button>
 
     <!-- Settings button -->
     <button id="btn-settings">⚙️ Settings</button>
@@ -684,6 +689,11 @@ THREEJS_TEMPLATE = r"""<!DOCTYPE html>
                     <div class="setting-toggle-slider"></div>
                 </div>
             </div>
+        </div>
+
+        <div class="settings-section">
+            <h3>Debug Tools</h3>
+            <button id="download-logs" title="Download browser console logs for debugging">📥 Download Browser Logs</button>
         </div>
 
         <div class="settings-footer">
