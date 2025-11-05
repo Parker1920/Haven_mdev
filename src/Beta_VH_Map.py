@@ -19,7 +19,8 @@ from logging.handlers import RotatingFileHandler
 from datetime import datetime
 from common.paths import data_path, logs_dir, dist_dir
 
-def _setup_logging():
+def _setup_logging() -> None:
+    """Set up logging with console and file handlers."""
     logging.basicConfig(
         level=logging.INFO,
         format='[%(asctime)s] %(levelname)s: %(message)s',
@@ -48,6 +49,7 @@ from typing import List, Optional
 from pathlib import Path
 
 import pandas as pd
+from typing import Tuple, Dict, Any
 
 
 # ============================================================================
@@ -171,8 +173,17 @@ def safe_filename(s: str) -> str:
     return "".join(c if c.isalnum() or c in (" ", "-", "_") else "_" for c in (s or "")).strip().replace(" ", "_")
 
 
-def cartesian_to_orbital(x: float, y: float, z: float):
-    """Convert cartesian coordinates to orbital positions."""
+def cartesian_to_orbital(x: float, y: float, z: float) -> Tuple[float, float, float]:
+    """Convert cartesian coordinates to orbital positions.
+
+    Args:
+        x: X coordinate
+        y: Y coordinate
+        z: Z coordinate
+
+    Returns:
+        Tuple of (x, y, z) in orbital coordinates
+    """
     radius = math.sqrt(x**2 + y**2 + z**2)
     if radius < 0.01:
         return 0.1, 0, 0

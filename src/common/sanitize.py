@@ -18,7 +18,7 @@ import re
 import html
 import unicodedata
 from pathlib import Path, PurePosixPath, PureWindowsPath
-from typing import Optional
+from typing import Optional, Any
 from urllib.parse import unquote
 
 
@@ -202,7 +202,7 @@ def sanitize_filename(filename: str) -> str:
 # COORDINATE VALIDATION
 # ============================================================================
 
-def sanitize_coordinate(value: any, min_val: float, max_val: float, default: float = 0.0) -> float:
+def sanitize_coordinate(value: Any, min_val: float, max_val: float, default: float = 0.0) -> float:
     """Sanitize and validate a coordinate value.
 
     Args:

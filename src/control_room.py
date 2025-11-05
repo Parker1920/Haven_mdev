@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 import logging
 from logging.handlers import RotatingFileHandler
+from typing import Dict, Any, Optional
 
 import customtkinter as ctk
 from tkinter import messagebox, filedialog
@@ -17,14 +18,19 @@ from common.paths import project_root, data_dir, logs_dir, dist_dir, config_dir,
 from common.progress import ProgressDialog, IndeterminateProgressDialog
 
 # Theme and colors (load from themes/haven_theme.json if available)
-THEMES = {
+THEMES: Dict[str, tuple[str, str]] = {
     "Dark": ("dark", "blue"),
     "Light": ("light", "blue"),
     "Cosmic": ("dark", "green"),
     "Haven (Cyan)": ("dark", "blue"),
 }
 
-def _load_theme_colors():
+def _load_theme_colors() -> Dict[str, str]:
+    """Load theme colors from JSON configuration or use defaults.
+    
+    Returns:
+        Dictionary mapping color names to hex values
+    """
     try:
         theme_path = project_root() / 'themes' / 'haven_theme.json'
         if theme_path.exists():
@@ -62,13 +68,14 @@ def _load_theme_colors():
         'glow': '#00ffff'
     }
 
-COLORS = _load_theme_colors()
+COLORS: Dict[str, str] = _load_theme_colors()
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
 
-def _setup_logging():
+def _setup_logging() -> None:
+    """Set up logging configuration with rotating file handlers."""
     logger = logging.getLogger()
     if logger.handlers:
         return
@@ -679,7 +686,12 @@ class ExportDialog(ctk.CTkToplevel):
         self.destroy()
 
 
-def main():
+def main() -> None:
+    """Main entry point for Control Room application.
+    
+    Handles argument parsing for alternate entry points (system, map)
+    and initializes the main UI or delegates to other modules.
+    """
     try:
         logging.info("=== Haven Control Room Starting ===")
         logging.info(f"Python: {sys.version}")

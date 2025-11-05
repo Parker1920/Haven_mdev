@@ -22,6 +22,8 @@ ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
 from common.paths import data_path, logs_dir, project_root
+from common.file_lock import FileLock
+from common.validation import validate_system_data, validate_coordinates
 
 # Settings
 SETTINGS_FILE = project_root() / "settings.json"
@@ -799,7 +801,13 @@ class SystemEntryWizard(ctk.CTk):
         except ValueError:
             messagebox.showerror("Error", "Invalid coordinates!")
             return
-        
+
+        # Validate coordinates before proceeding
+        is_valid, error = validate_coordinates(x, y, z)
+        if not is_valid:
+            messagebox.showerror("Validation Error", f"Invalid coordinates:\n{error}")
+            return
+
         try:
             # Generate unique ID using UUID instead of timestamp to prevent collisions
             unique_id = uuid.uuid4().hex[:8].upper()
@@ -816,12 +824,22 @@ class SystemEntryWizard(ctk.CTk):
                 "planets_names": [p['name'] for p in self.planets]
             }
 
+            # Validate system data against schema
+            is_valid, error = validate_system_data(system_data)
+            if not is_valid:
+                messagebox.showerror("Validation Error", f"System data validation failed:\n{error}")
+                logging.error(f"System validation failed: {error}")
+                return
+
             # Load existing data with new schema preference (top-level map)
             obj: dict = {"_meta": {"version": "3.0.0"}}
-            if self.data_file.exists():
-                with open(self.data_file, 'r', encoding='utf-8') as f:
-                    try:
-                        existing = json.load(f)
+
+            # Use file locking to prevent concurrent access issues
+            with FileLock(self.data_file, timeout=10.0):
+                if self.data_file.exists():
+                    with open(self.data_file, 'r', encoding='utf-8') as f:
+                        try:
+                            existing = json.load(f)
                         # Already top-level map?
                         if isinstance(existing, dict):
                             vals = [v for k,v in existing.items() if k != '_meta']
@@ -845,21 +863,22 @@ class SystemEntryWizard(ctk.CTk):
                     except Exception:
                         pass
 
-            # Duplicate / overwrite prompt
-            key = self.system_name
-            if key in obj:
-                confirm = messagebox.askyesno("Overwrite", f"System '{key}' exists. Overwrite?")
-                if not confirm:
-                    return
-            obj[key] = system_data
+                # Duplicate / overwrite prompt
+                key = self.system_name
+                if key in obj:
+                    confirm = messagebox.askyesno("Overwrite", f"System '{key}' exists. Overwrite?")
+                    if not confirm:
+                        return
+                obj[key] = system_data
 
-            # Save with backup
-            if self.data_file.exists():
-                backup = self.data_file.with_suffix('.json.bak')
-                shutil.copy2(self.data_file, backup)
+                # Save with backup
+                if self.data_file.exists():
+                    backup = self.data_file.with_suffix('.json.bak')
+                    shutil.copy2(self.data_file, backup)
 
-            with open(self.data_file, 'w', encoding='utf-8') as f:
-                json.dump(obj, f, indent=2)
+                # Write data while holding the file lock
+                with open(self.data_file, 'w', encoding='utf-8') as f:
+                    json.dump(obj, f, indent=2)
             
             messagebox.showinfo("Success", f"System '{self.system_name}' saved with {len(self.planets)} planet(s)!")
             
