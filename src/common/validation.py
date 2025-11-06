@@ -21,6 +21,7 @@ Usage:
 
 import json
 import jsonschema
+import sys
 from pathlib import Path
 from typing import Tuple, List, Dict, Any
 
@@ -44,8 +45,14 @@ def load_schema() -> dict:
     if _SCHEMA_CACHE is not None:
         return _SCHEMA_CACHE
 
-    # Find schema file
-    schema_path = Path(__file__).parent.parent.parent / 'config' / 'data_schema.json'
+    # Find schema file - handle both frozen (PyInstaller) and development modes
+    if getattr(sys, 'frozen', False):
+        # Running in PyInstaller bundle - use _MEIPASS
+        base_path = Path(sys._MEIPASS)
+        schema_path = base_path / 'config' / 'data_schema.json'
+    else:
+        # Running from source
+        schema_path = Path(__file__).parent.parent.parent / 'config' / 'data_schema.json'
 
     if not schema_path.exists():
         raise FileNotFoundError(

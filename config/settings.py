@@ -161,9 +161,23 @@ def get_data_provider():
     Returns:
         DataProvider instance (JSON or Database)
     """
+    import os
+    import logging
     from src.common.data_provider import get_data_provider, auto_detect_provider
 
-    if AUTO_DETECT_BACKEND:
+    # User edition is ALWAYS JSON-only, never database
+    is_user_edition = os.environ.get('HAVEN_USER_EDITION') == '1'
+    
+    logging.info(f"[SETTINGS] get_data_provider() called: is_user_edition={is_user_edition}")
+    
+    if is_user_edition:
+        # User edition: force JSON provider
+        logging.info("[SETTINGS] User edition detected - forcing JSON provider")
+        return get_data_provider(
+            use_database=False,
+            json_path=str(JSON_DATA_PATH)
+        )
+    elif AUTO_DETECT_BACKEND:
         return auto_detect_provider(
             json_path=str(JSON_DATA_PATH),
             db_path=str(DATABASE_PATH),

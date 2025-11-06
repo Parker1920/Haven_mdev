@@ -1239,6 +1239,16 @@ function animate() {
 
 // Handle window resize handled above to also layout HUD
 
+// Hide the loading overlay once the scene is ready
+const loadingOverlay = document.getElementById('loading-overlay');
+if (loadingOverlay) {
+    loadingOverlay.style.opacity = '0';
+    loadingOverlay.style.transition = 'opacity 0.5s ease-out';
+    setTimeout(() => {
+        loadingOverlay.style.display = 'none';
+    }, 500);
+}
+
 // Start animation
 animate();
 

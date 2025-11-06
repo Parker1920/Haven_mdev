@@ -24,6 +24,14 @@ ctk.set_default_color_theme("blue")
 from common.paths import data_path, logs_dir, project_root
 from common.file_lock import FileLock
 from common.validation import validate_system_data, validate_coordinates
+import os
+
+# Check if running in User Edition mode
+IS_USER_EDITION = os.environ.get('HAVEN_USER_EDITION') == '1'
+USER_DATA_PATH = os.environ.get('HAVEN_DATA_PATH')  # Path to user's data file
+
+# Debug: Print to stderr so it shows up regardless of logging
+print(f"[WIZARD INIT DEBUG] IS_USER_EDITION={IS_USER_EDITION}, env value: '{os.environ.get('HAVEN_USER_EDITION')}'", file=sys.stderr)
 
 # Phase 3: Database integration imports
 # Ensure project root is in sys.path so config/ can be imported
@@ -36,7 +44,10 @@ try:
         USE_DATABASE, get_data_provider, get_current_backend,
         SHOW_BACKEND_STATUS, SHOW_SYSTEM_COUNT
     )
-    PHASE3_ENABLED = True
+    # For user edition, disable Phase 3 database features entirely
+    # User edition is JSON-only and should never use database provider
+    PHASE3_ENABLED = not IS_USER_EDITION
+    print(f"[WIZARD INIT DEBUG] Phase 3 imported. PHASE3_ENABLED={PHASE3_ENABLED}", file=sys.stderr)
 except ImportError as e:
     # Fallback if Phase 3 modules not available
     PHASE3_ENABLED = False
@@ -247,9 +258,12 @@ class PlanetMoonEditor(ctk.CTkToplevel):
         
         self.transient(parent)
         self.grab_set()
-        
+
         self.build_ui()
         self.load_data()
+
+        # Handle window close button (X) - treat as cancel
+        self.protocol("WM_DELETE_WINDOW", self.cancel)
     
     def build_ui(self):
         # Header
@@ -458,9 +472,9 @@ class SpaceStationEditor(ctk.CTkToplevel):
     def __init__(self, parent, station_data=None, system_name=""):
         super().__init__(parent)
         self.title("Space Station Editor")
-        self.geometry("600x450")
+        self.geometry("600x550")  # Increased height from 450 to 550 to show all buttons
         self.configure(fg_color=COLORS['bg_dark'])
-        self.resizable(False, False)
+        self.resizable(True, True)  # Allow resizing so users can adjust if needed
 
         self.result = None
         self.removed = False
@@ -542,6 +556,9 @@ class SpaceStationEditor(ctk.CTkToplevel):
         self.transient(parent)
         self.grab_set()
 
+        # Handle window close button (X) - treat as cancel
+        self.protocol("WM_DELETE_WINDOW", self.cancel)
+
     def save(self):
         """Save space station data"""
         name = self.name_entry.get().strip()
@@ -582,10 +599,15 @@ class SystemEntryWizard(ctk.CTk):
         super().__init__()
         self.title("Haven System Entry - Wizard")
         self.geometry("1400x900")
+        self.minsize(1200, 750)  # Set minimum size to ensure buttons are always visible
         self.configure(fg_color=COLORS['bg_dark'])
 
-        # Data
-        self.data_file = data_path("data.json")
+        # Data - Use user edition path if available
+        if IS_USER_EDITION and USER_DATA_PATH:
+            self.data_file = Path(USER_DATA_PATH)
+        else:
+            self.data_file = data_path("data.json")
+
         self.planets = []
         self.space_station = None  # Space station data
         self.current_page = 1
@@ -594,7 +616,8 @@ class SystemEntryWizard(ctk.CTk):
         # Phase 3: Initialize data provider
         self.data_provider = None
         self.current_backend = 'json'
-        if PHASE3_ENABLED:
+        # For user edition, NEVER use database - always use JSON only
+        if PHASE3_ENABLED and not IS_USER_EDITION:
             self._init_data_provider()
 
         # System fields (Page 1)
@@ -667,17 +690,17 @@ class SystemEntryWizard(ctk.CTk):
 
     def _update_data_source_ui(self):
         """Update data source badge and count"""
-        source = self.data_source.get()
+        # Update badge (skip for user edition)
+        if not IS_USER_EDITION and self.data_badge is not None:
+            source = self.data_source.get()
+            if source == "production":
+                self.data_badge.configure(text="PRODUCTION", fg_color=COLORS['success'], text_color="white")
+            elif source == "testing":
+                self.data_badge.configure(text="TESTING", fg_color="#ff8800", text_color="white")
+            else:  # load_test
+                self.data_badge.configure(text="LOAD TEST", fg_color=COLORS['accent_purple'], text_color="white")
 
-        # Update badge
-        if source == "production":
-            self.data_badge.configure(text="PRODUCTION", fg_color=COLORS['success'], text_color="white")
-        elif source == "testing":
-            self.data_badge.configure(text="TESTING", fg_color="#ff8800", text_color="white")
-        else:  # load_test
-            self.data_badge.configure(text="LOAD TEST", fg_color=COLORS['accent_purple'], text_color="white")
-
-        # Update count
+        # Update count (always show)
         try:
             systems = self.get_existing_systems()
             count = len(systems)
@@ -710,43 +733,68 @@ class SystemEntryWizard(ctk.CTk):
         data_source_frame = ctk.CTkFrame(header, fg_color="transparent")
         data_source_frame.pack(side="left", padx=(0, 20), pady=15)
 
-        data_label = ctk.CTkLabel(data_source_frame, text="Data Source:",
-                                  font=ctk.CTkFont(family="Segoe UI", size=11),
-                                  text_color=COLORS['text_secondary'])
-        data_label.pack(anchor="w", pady=(0, 3))
+        if IS_USER_EDITION:
+            # User Edition: Simple label showing current file
+            data_label = ctk.CTkLabel(data_source_frame, text="Working File:",
+                                      font=ctk.CTkFont(family="Segoe UI", size=11),
+                                      text_color=COLORS['text_secondary'])
+            data_label.pack(anchor="w", pady=(0, 3))
 
-        self.data_dropdown = ctk.CTkOptionMenu(
-            data_source_frame,
-            variable=self.data_source,
-            values=["production", "testing", "load_test"],
-            command=self._on_data_source_change,
-            font=ctk.CTkFont(family="Segoe UI", size=12),
-            dropdown_font=ctk.CTkFont(family="Segoe UI", size=11),
-            fg_color=COLORS['bg_card'],
-            button_color=COLORS['accent_purple'],
-            button_hover_color=COLORS['accent_cyan'],
-            dropdown_fg_color=COLORS['bg_card'],
-            dropdown_hover_color=COLORS['accent_purple'],
-            text_color=COLORS['text_primary'],
-            width=180,
-            height=32,
-            corner_radius=6
-        )
-        self.data_dropdown.pack(fill="x")
+            # Show the filename
+            filename = self.data_file.name if hasattr(self.data_file, 'name') else "data.json"
+            file_label = ctk.CTkLabel(data_source_frame, text=filename,
+                                     font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
+                                     text_color=COLORS['text_primary'])
+            file_label.pack(anchor="w", pady=(0, 5))
 
-        # Data source badge and count
-        badge_frame = ctk.CTkFrame(data_source_frame, fg_color="transparent")
-        badge_frame.pack(anchor="w", pady=(3, 0))
+            # System count only
+            self.data_count_label = ctk.CTkLabel(data_source_frame, text="",
+                                                font=ctk.CTkFont(family="Segoe UI", size=10),
+                                                text_color=COLORS['text_secondary'])
+            self.data_count_label.pack(anchor="w")
 
-        self.data_badge = ctk.CTkLabel(badge_frame, text="",
-                                       font=ctk.CTkFont(family="Segoe UI", size=10, weight="bold"),
-                                       corner_radius=4, padx=6, pady=2)
-        self.data_badge.pack(side="left", padx=(0, 5))
+            # No dropdown or badge for user edition
+            self.data_dropdown = None
+            self.data_badge = None
+        else:
+            # Master Edition: Full dropdown with data sources
+            data_label = ctk.CTkLabel(data_source_frame, text="Data Source:",
+                                      font=ctk.CTkFont(family="Segoe UI", size=11),
+                                      text_color=COLORS['text_secondary'])
+            data_label.pack(anchor="w", pady=(0, 3))
 
-        self.data_count_label = ctk.CTkLabel(badge_frame, text="",
-                                            font=ctk.CTkFont(family="Segoe UI", size=10),
-                                            text_color=COLORS['text_secondary'])
-        self.data_count_label.pack(side="left")
+            self.data_dropdown = ctk.CTkOptionMenu(
+                data_source_frame,
+                variable=self.data_source,
+                values=["production", "testing", "load_test"],
+                command=self._on_data_source_change,
+                font=ctk.CTkFont(family="Segoe UI", size=12),
+                dropdown_font=ctk.CTkFont(family="Segoe UI", size=11),
+                fg_color=COLORS['bg_card'],
+                button_color=COLORS['accent_purple'],
+                button_hover_color=COLORS['accent_cyan'],
+                dropdown_fg_color=COLORS['bg_card'],
+                dropdown_hover_color=COLORS['accent_purple'],
+                text_color=COLORS['text_primary'],
+                width=180,
+                height=32,
+                corner_radius=6
+            )
+            self.data_dropdown.pack(fill="x")
+
+            # Data source badge and count
+            badge_frame = ctk.CTkFrame(data_source_frame, fg_color="transparent")
+            badge_frame.pack(anchor="w", pady=(3, 0))
+
+            self.data_badge = ctk.CTkLabel(badge_frame, text="",
+                                           font=ctk.CTkFont(family="Segoe UI", size=10, weight="bold"),
+                                           corner_radius=4, padx=6, pady=2)
+            self.data_badge.pack(side="left", padx=(0, 5))
+
+            self.data_count_label = ctk.CTkLabel(badge_frame, text="",
+                                                font=ctk.CTkFont(family="Segoe UI", size=10),
+                                                text_color=COLORS['text_secondary'])
+            self.data_count_label.pack(side="left")
 
         # Phase 3: Backend status indicators
         if PHASE3_ENABLED:

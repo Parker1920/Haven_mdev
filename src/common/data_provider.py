@@ -106,7 +106,7 @@ class JSONDataProvider:
         with open(self.json_path, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
 
-    def get_all_systems(self, region: Optional[str] = None) -> List[Dict]:
+    def get_all_systems(self, region: Optional[str] = None, include_planets: bool = False) -> List[Dict]:
         """Get all systems, optionally filtered by region"""
         data = self._load_data()
 

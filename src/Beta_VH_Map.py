@@ -59,11 +59,24 @@ if str(_proj_root) not in sys.path:
     sys.path.insert(0, str(_proj_root))
 
 try:
-    from config.settings import (
-        USE_DATABASE,
-        get_data_provider,
-        get_current_backend
-    )
+    # Import from settings_user if user edition is active, else use master settings
+    from src.common.paths import IS_USER_EDITION
+    
+    if IS_USER_EDITION:
+        from config.settings_user import (
+            USE_DATABASE,
+            get_data_provider,
+            get_current_backend
+        )
+        logging.info("[Phase 4] User Edition: Using settings_user configuration")
+    else:
+        from config.settings import (
+            USE_DATABASE,
+            get_data_provider,
+            get_current_backend
+        )
+        logging.info("[Phase 4] Master Edition: Using settings configuration")
+    
     PHASE4_ENABLED = True
     logging.info("[Phase 4] Map Generator database integration enabled")
 except ImportError as e:
@@ -294,7 +307,15 @@ def load_template() -> str:
     Returns:
         HTML template string with placeholders for data injection.
     """
-    template_path = Path(__file__).parent / 'templates' / 'map_template.html'
+    # Handle both frozen (PyInstaller) and development modes
+    if getattr(sys, 'frozen', False):
+        # Running in PyInstaller bundle - use _MEIPASS
+        base_path = Path(sys._MEIPASS)
+        template_path = base_path / 'templates' / 'map_template.html'
+    else:
+        # Running from source
+        template_path = Path(__file__).parent / 'templates' / 'map_template.html'
+
     if not template_path.exists():
         raise FileNotFoundError(f"Template not found: {template_path}")
     return template_path.read_text(encoding='utf-8')
