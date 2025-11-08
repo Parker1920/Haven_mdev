@@ -3,6 +3,7 @@ import sys
 import subprocess
 import threading
 import shlex
+import os
 from datetime import datetime
 from pathlib import Path
 import logging
@@ -15,6 +16,8 @@ import argparse
 
 from common.paths import project_root, data_dir, logs_dir, dist_dir, config_dir, docs_dir, src_dir
 from common.progress import ProgressDialog, IndeterminateProgressDialog
+from common.data_source_manager import get_data_source_manager
+from common.vh_database_backup import backup_vh_database, cleanup_old_backups
 
 # Phase 2: Database integration imports
 # Ensure project root is in sys.path so config/ can be imported
@@ -156,8 +159,11 @@ class ControlRoom(ctk.CTk):
             self.geometry("980x700")
             self.configure(fg_color=COLORS['bg_dark'])
             self._frozen = getattr(sys, 'frozen', False)
-            # Data source: 'production', 'testing', or 'load_test'
+            # Data source: 'production', 'testing', 'load_test', or 'yh_database'
             self.data_source = ctk.StringVar(value='production')
+
+            # Initialize VH-Database backups on startup
+            self._initialize_vh_database_backups()
 
             # Phase 2: Initialize data provider
             self.data_provider = None
@@ -171,6 +177,31 @@ class ControlRoom(ctk.CTk):
         except Exception as e:
             logging.error(f"Error initializing ControlRoom: {e}", exc_info=True)
             raise
+
+    def _initialize_vh_database_backups(self):
+        """Initialize VH-Database backups on startup"""
+        try:
+            vh_db_path = project_root() / "data" / "VH-Database.db"
+            
+            # Only backup if YH-Database exists
+            if vh_db_path.exists():
+                logging.info("Creating backup of VH-Database on startup...")
+                backup_path = backup_vh_database(vh_db_path)
+                
+                if backup_path:
+                    logging.info(f"✓ Backup created: {backup_path.name}")
+                    
+                    # Clean up old backups, keep last 10
+                    deleted = cleanup_old_backups(keep_count=10)
+                    if deleted > 0:
+                        logging.info(f"Cleaned up {deleted} old backups")
+                else:
+                    logging.warning("Failed to create backup of VH-Database")
+            else:
+                logging.debug("VH-Database not found, skipping backup")
+        
+        except Exception as e:
+            logging.error(f"Error initializing VH-Database backups: {e}")
 
     def _init_data_provider(self):
         """Initialize data provider based on configuration (Phase 2)"""
@@ -261,7 +292,7 @@ class ControlRoom(ctk.CTk):
         self.data_dropdown = ctk.CTkOptionMenu(
             data_dropdown_frame,
             variable=self.data_source,
-            values=["production", "testing", "load_test"],
+            values=["production", "testing", "load_test", "yh_database"],
             command=self._on_data_source_change,
             font=ctk.CTkFont(family="Segoe UI", size=13),
             dropdown_font=ctk.CTkFont(family="Segoe UI", size=12),
@@ -408,26 +439,23 @@ class ControlRoom(ctk.CTk):
 
     # ----------------------- Utilities ----------------------
     def _get_data_indicator_text(self):
-        """Get data indicator text based on current settings (Phase 2)"""
-        source = self.data_source.get()
-        if source == "testing":
-            return "📊 Test Data (tests/stress_testing/TESTING.json)"
-        elif source == "load_test":
-            return "🔬 Load Test Database (data/haven_load_test.db)"
-        elif PHASE2_ENABLED and self.current_backend == 'database':
-            return "📊 Production Data (Database)"
-        else:
-            return "📊 Production Data (data/data.json)"
+        """Get data indicator text - NOW UNIFIED via DataSourceManager"""
+        manager = get_data_source_manager()
+        current = manager.get_current()
+        
+        if current:
+            return f"{current.icon} {current.display_name}"
+        return "📊 Unknown Data Source"
     
     def _get_data_source_description(self):
-        """Get descriptive text for current data source"""
+        """Get descriptive text for current data source - NOW UNIFIED"""
+        manager = get_data_source_manager()
         source = self.data_source.get()
-        descriptions = {
-            "production": "Real production systems (11 systems)",
-            "testing": "Stress test data (500 systems)",
-            "load_test": "Billion-scale load test database"
-        }
-        return descriptions.get(source, "")
+        source_info = manager.get_source(source)
+        
+        if source_info:
+            return source_info.description
+        return ""
 
     def _log(self, msg: str):
         logging.info(msg)
@@ -439,51 +467,47 @@ class ControlRoom(ctk.CTk):
         self.status_label.configure(text=msg)
 
     def _on_data_source_change(self, choice=None):
-        """Handle data source dropdown change (Phase 2 enhanced)"""
-        source = self.data_source.get()
+        """
+        Handle data source dropdown change - NOW UNIFIED.
+        All three functions (wizard, dropdown, stats) now use same data.
+        """
+        manager = get_data_source_manager()
+        source_name = self.data_source.get()
+        
+        # Update manager's current source
+        if not manager.set_current(source_name):
+            self._log(f"Invalid data source: {source_name}")
+            return
+        
+        source_info = manager.get_current()
         
         # Update description label
         if hasattr(self, 'data_description'):
-            self.data_description.configure(text=self._get_data_source_description())
+            self.data_description.configure(text=source_info.description)
         
-        # Update data indicator
-        if source == "testing":
-            self.data_indicator.configure(
-                text="🧪 Test Data (tests/stress_testing/TESTING.json)",
-                text_color=COLORS['warning']
+        # Update data indicator with color coding
+        color_map = {
+            "production": COLORS['success'],     # Green
+            "testing": COLORS['warning'],         # Orange
+            "load_test": COLORS['accent_cyan']    # Cyan
+        }
+        color = color_map.get(source_name, COLORS['success'])
+        
+        indicator_text = f"{source_info.icon} {source_info.display_name}"
+        self.data_indicator.configure(
+            text=indicator_text,
+            text_color=color
+        )
+        
+        # Update system count indicator
+        if hasattr(self, 'count_indicator') and SHOW_SYSTEM_COUNT:
+            self.count_indicator.configure(
+                text=f"Systems: {source_info.system_count:,}"
             )
-            self._log("Switched to TEST data source (500 systems)")
-        elif source == "load_test":
-            self.data_indicator.configure(
-                text="🔬 Load Test Database (data/haven_load_test.db)",
-                text_color=COLORS['accent_cyan']
-            )
-            self._log("Switched to LOAD TEST database (billion-scale)")
-        else:
-            self.data_indicator.configure(
-                text=self._get_data_indicator_text(),
-                text_color=COLORS['success']
-            )
-            self._log("Switched to PRODUCTION data source")
+        
+        # Log the change
+        self._log(f"Switched to {source_info.display_name} ({source_info.system_count:,} systems)")
 
-        # Phase 2: Update system count if available
-        if PHASE2_ENABLED and hasattr(self, 'count_indicator') and SHOW_SYSTEM_COUNT:
-            try:
-                if source == "testing":
-                    # Count systems in test file
-                    import json
-                    test_file = project_root() / "tests" / "stress_testing" / "TESTING.json"
-                    if test_file.exists():
-                        with open(test_file, 'r', encoding='utf-8') as f:
-                            data = json.load(f)
-                        count = sum(1 for k, v in data.items() if k != "_meta" and isinstance(v, dict))
-                        self.count_indicator.configure(text=f"Systems: {count:,}")
-                else:
-                    if self.data_provider:
-                        count = self.data_provider.get_total_count()
-                        self.count_indicator.configure(text=f"Systems: {count:,}")
-            except Exception as e:
-                logging.warning(f"Failed to update system count: {e}")
 
     def _confirm(self, title: str, msg: str) -> bool:
         return messagebox.askyesno(title, msg)
@@ -507,35 +531,50 @@ class ControlRoom(ctk.CTk):
 
     # ----------------------- Actions ------------------------
     def launch_gui(self):
-        self._log("Launching System Entry Wizard…")
+        """
+        Launch System Entry Wizard with current data context - NOW UNIFIED.
+        Passes the current data source to wizard so it uses same data.
+        """
+        manager = get_data_source_manager()
+        current_source = manager.get_current()
+        
+        self._log(f"Launching System Entry Wizard (using {current_source.name} data)…")
+        
         def run():
             try:
                 if self._frozen:
-                    # Relaunch the same EXE with a different entry to isolate Tk roots
-                    cmd = [sys.executable, '--entry', 'system']
+                    # Relaunch the same EXE with data source context
+                    cmd = [sys.executable, '--entry', 'system', '--data-source', current_source.name]
                     subprocess.Popen(cmd, cwd=str(project_root()))
                 else:
                     app = src_dir() / 'system_entry_wizard.py'
+                    env = os.environ.copy()
+                    env['HAVEN_DATA_SOURCE'] = current_source.name
+                    
                     if sys.platform == 'darwin':
-                        # macOS: Use 'open' command with pythonw to launch GUI properly
-                        # Create a temporary shell script to run the wizard
+                        # macOS: Create temp shell script with env var
                         import tempfile
                         script_content = f'''#!/bin/bash
+export HAVEN_DATA_SOURCE="{current_source.name}"
 cd "{project_root()}"
 "{sys.executable}" "{app}"
 '''
                         fd, script_path = tempfile.mkstemp(suffix='.command', text=True)
                         with open(fd, 'w') as f:
                             f.write(script_content)
-                        import os
-                        os.chmod(script_path, 0o755)
+                        import os as os_module
+                        os_module.chmod(script_path, 0o755)
                         subprocess.Popen(['open', '-a', 'Terminal', script_path])
                     else:
+                        # Windows/Linux: Use environment variable
                         cmd = [sys.executable, str(app)]
-                        subprocess.Popen(cmd, cwd=str(project_root()))
+                        subprocess.Popen(cmd, cwd=str(project_root()), env=env)
+                
                 self._log("System Entry Wizard launched.")
             except Exception as e:
                 self._log(f"Launch failed: {e}")
+                logging.error(f"Wizard launch error: {e}", exc_info=True)
+        
         self._run_bg(run)
 
     def generate_map(self):
@@ -812,47 +851,55 @@ cd "{project_root()}"
         SystemTestMenu(self)
 
     def show_database_stats(self):
-        """Show database statistics in a dialog (Phase 2)"""
-        if not PHASE2_ENABLED or self.current_backend != 'database':
+        """
+        Show database statistics - NOW UNIFIED.
+        Pulls from DataSourceManager to ensure consistent counts.
+        """
+        manager = get_data_source_manager()
+        current = manager.get_current()
+        
+        if current.backend_type != 'database':
             messagebox.showinfo("Info", "Database statistics only available in database mode.")
             return
-
+        
         try:
             from src.common.database import HavenDatabase
-
-            with HavenDatabase(str(DATABASE_PATH)) as db:
+            
+            with HavenDatabase(str(current.path)) as db:
                 stats = db.get_statistics()
-
+            
             # Create stats dialog
             dialog = ctk.CTkToplevel(self)
-            dialog.title("Database Statistics")
-            dialog.geometry("550x450")
+            dialog.title(f"Database Statistics - {current.display_name}")
+            dialog.geometry("550x500")
             dialog.configure(fg_color=COLORS['bg_dark'])
-
+            
             # Title
             title = ctk.CTkLabel(
                 dialog,
-                text="📊 Database Statistics",
+                text=f"📊 Database Statistics",
                 font=ctk.CTkFont(family="Segoe UI", size=20, weight="bold"),
                 text_color=COLORS['accent_cyan']
             )
             title.pack(pady=20)
-
+            
             # Stats frame
             stats_frame = ctk.CTkScrollableFrame(dialog, fg_color=COLORS['glass'])
             stats_frame.pack(fill="both", expand=True, padx=20, pady=(0, 20))
+            
+            # Display stats - USE MANAGER'S SYSTEM COUNT
+            stats_text = f"""Source: {current.display_name}
+Path: {current.path}
 
-            # Display stats
-            stats_text = f"""Total Systems: {stats['total_systems']:,}
+Total Systems: {current.system_count:,}  ← From DataSourceManager
 Total Planets: {stats['total_planets']:,}
 Total Moons: {stats['total_moons']:,}
 Total Space Stations: {stats['total_stations']:,}
 
 Regions: {', '.join(stats['regions'])}
 
-Database Size: {stats['database_size_mb']:.2f} MB
-Database Path: {DATABASE_PATH}"""
-
+Database Size: {current.size_mb:.2f} MB"""
+            
             stats_label = ctk.CTkLabel(
                 stats_frame,
                 text=stats_text,
@@ -860,8 +907,8 @@ Database Path: {DATABASE_PATH}"""
                 text_color=COLORS['text_primary'],
                 justify="left"
             )
-            stats_label.pack(padx=20, pady=20)
-
+            stats_label.pack(padx=20, pady=20, anchor="nw")
+            
             # Close button
             close_btn = ctk.CTkButton(
                 dialog,
@@ -871,10 +918,10 @@ Database Path: {DATABASE_PATH}"""
                 hover_color=COLORS['accent_pink']
             )
             close_btn.pack(pady=(0, 20))
-
+            
             dialog.transient(self)
             dialog.grab_set()
-
+            
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load database statistics:\n{e}")
             logging.error(f"Database stats error: {e}", exc_info=True)

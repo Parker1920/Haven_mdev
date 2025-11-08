@@ -630,6 +630,9 @@ class SystemEntryWizard(ctk.CTk):
         self.attributes = ""
 
         self.build_ui()
+        
+        # Show confirmation of which database is being edited
+        self._show_database_confirmation()
 
     def _init_data_provider(self):
         """Initialize data provider based on configuration (Phase 3)"""
@@ -642,65 +645,29 @@ class SystemEntryWizard(ctk.CTk):
             self.data_provider = None
             self.current_backend = 'json'
 
+    def _show_database_confirmation(self):
+        """Show confirmation of which database is being edited (STREAMLINED)"""
+        try:
+            from common.data_source_manager import get_data_source_manager
+            manager = get_data_source_manager()
+            current_source = manager.get_current()
+            
+            # Log to console and status
+            msg = f"✓ Editing: {current_source.icon} {current_source.display_name}"
+            logging.info(msg)
+            print(f"[WIZARD INIT] {msg}", file=sys.stderr)
+            
+        except Exception as e:
+            logging.warning(f"Could not confirm database: {e}")
+
     def _on_data_source_change(self, choice=None):
-        """Handle data source dropdown change with smart behavior"""
-        # Check if form has unsaved data
-        has_data = bool(
-            self.name_entry.get().strip() or
-            self.region_entry.get().strip() or
-            self.x_entry.get().strip() or
-            self.y_entry.get().strip() or
-            self.z_entry.get().strip() or
-            self.planets or
-            self.space_station
-        )
-
-        if has_data:
-            # Ask for confirmation
-            confirm = messagebox.askyesno(
-                "Unsaved Changes",
-                "You have unsaved data in the form.\n\n"
-                "Switching data source will clear the current form.\n\n"
-                "Continue anyway?"
-            )
-            if not confirm:
-                # Revert dropdown to previous value
-                # This is a bit tricky - we need to track previous value
-                return
-
-        # Update data file based on selection
-        source = self.data_source.get()
-        if source == "testing":
-            self.data_file = data_path("testing.json")
-        elif source == "load_test":
-            self.data_file = data_path("load_test.json")
-        else:  # production
-            self.data_file = data_path("data.json")
-
-        # Clear form
-        self.clear_page1()
-
-        # Update visual indicators
-        self._update_data_source_ui()
-
-        # Reload system list
-        self._reload_system_list()
-
-        logging.info(f"Data source changed to: {source}")
+        """Handle data source dropdown change - DEPRECATED (no longer used in streamlined UI)"""
+        # This method is kept for backwards compatibility but is no longer called
+        pass
 
     def _update_data_source_ui(self):
-        """Update data source badge and count"""
-        # Update badge (skip for user edition)
-        if not IS_USER_EDITION and self.data_badge is not None:
-            source = self.data_source.get()
-            if source == "production":
-                self.data_badge.configure(text="PRODUCTION", fg_color=COLORS['success'], text_color="white")
-            elif source == "testing":
-                self.data_badge.configure(text="TESTING", fg_color="#ff8800", text_color="white")
-            else:  # load_test
-                self.data_badge.configure(text="LOAD TEST", fg_color=COLORS['accent_purple'], text_color="white")
-
-        # Update count (always show)
+        """Update data source badge and count - DEPRECATED (badge is now read-only)"""
+        # Update count (still useful for refreshing display)
         try:
             systems = self.get_existing_systems()
             count = len(systems)
@@ -729,72 +696,54 @@ class SystemEntryWizard(ctk.CTk):
                              text_color=COLORS['accent_cyan'])
         title.pack(side="left", padx=30, pady=(15, 5))
 
-        # Data Source Selector (center-left)
+        # Data Source Badge (STREAMLINED - Read-only, no dropdown)
         data_source_frame = ctk.CTkFrame(header, fg_color="transparent")
         data_source_frame.pack(side="left", padx=(0, 20), pady=15)
 
-        if IS_USER_EDITION:
-            # User Edition: Simple label showing current file
-            data_label = ctk.CTkLabel(data_source_frame, text="Working File:",
-                                      font=ctk.CTkFont(family="Segoe UI", size=11),
-                                      text_color=COLORS['text_secondary'])
-            data_label.pack(anchor="w", pady=(0, 3))
+        # Get current database info from DataSourceManager
+        try:
+            from common.data_source_manager import get_data_source_manager
+            manager = get_data_source_manager()
+            current_source = manager.get_current()
+            db_display_name = f"{current_source.icon} {current_source.display_name}"
+        except Exception as e:
+            logging.warning(f"Could not get current source: {e}")
+            db_display_name = "Database"
 
-            # Show the filename
-            filename = self.data_file.name if hasattr(self.data_file, 'name') else "data.json"
-            file_label = ctk.CTkLabel(data_source_frame, text=filename,
-                                     font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
-                                     text_color=COLORS['text_primary'])
-            file_label.pack(anchor="w", pady=(0, 5))
-
-            # System count only
-            self.data_count_label = ctk.CTkLabel(data_source_frame, text="",
-                                                font=ctk.CTkFont(family="Segoe UI", size=10),
-                                                text_color=COLORS['text_secondary'])
-            self.data_count_label.pack(anchor="w")
-
-            # No dropdown or badge for user edition
-            self.data_dropdown = None
-            self.data_badge = None
-        else:
-            # Master Edition: Full dropdown with data sources
-            data_label = ctk.CTkLabel(data_source_frame, text="Data Source:",
-                                      font=ctk.CTkFont(family="Segoe UI", size=11),
-                                      text_color=COLORS['text_secondary'])
-            data_label.pack(anchor="w", pady=(0, 3))
-
-            self.data_dropdown = ctk.CTkOptionMenu(
-                data_source_frame,
-                variable=self.data_source,
-                values=["production", "testing", "load_test"],
-                command=self._on_data_source_change,
-                font=ctk.CTkFont(family="Segoe UI", size=12),
-                dropdown_font=ctk.CTkFont(family="Segoe UI", size=11),
-                fg_color=COLORS['bg_card'],
-                button_color=COLORS['accent_purple'],
-                button_hover_color=COLORS['accent_cyan'],
-                dropdown_fg_color=COLORS['bg_card'],
-                dropdown_hover_color=COLORS['accent_purple'],
-                text_color=COLORS['text_primary'],
-                width=180,
-                height=32,
-                corner_radius=6
-            )
-            self.data_dropdown.pack(fill="x")
-
-            # Data source badge and count
+        # Show current database as read-only badge (Master Edition)
+        if not IS_USER_EDITION:
             badge_frame = ctk.CTkFrame(data_source_frame, fg_color="transparent")
-            badge_frame.pack(anchor="w", pady=(3, 0))
+            badge_frame.pack(anchor="w", pady=(0, 3))
 
-            self.data_badge = ctk.CTkLabel(badge_frame, text="",
-                                           font=ctk.CTkFont(family="Segoe UI", size=10, weight="bold"),
-                                           corner_radius=4, padx=6, pady=2)
-            self.data_badge.pack(side="left", padx=(0, 5))
+            self.data_badge = ctk.CTkLabel(badge_frame, text=db_display_name,
+                                           font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
+                                           fg_color=COLORS['accent_purple'],
+                                           text_color=COLORS['text_primary'],
+                                           corner_radius=6, padx=10, pady=4)
+            self.data_badge.pack(side="left", padx=(0, 8))
 
+            # System count label
             self.data_count_label = ctk.CTkLabel(badge_frame, text="",
                                                 font=ctk.CTkFont(family="Segoe UI", size=10),
                                                 text_color=COLORS['text_secondary'])
             self.data_count_label.pack(side="left")
+        else:
+            # User Edition: Simple filename display
+            filename = self.data_file.name if hasattr(self.data_file, 'name') else "data.json"
+            file_label = ctk.CTkLabel(data_source_frame, text=f"📄 {filename}",
+                                     font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
+                                     text_color=COLORS['text_primary'])
+            file_label.pack(anchor="w", pady=(0, 3))
+
+            self.data_count_label = ctk.CTkLabel(data_source_frame, text="",
+                                                font=ctk.CTkFont(family="Segoe UI", size=10),
+                                                text_color=COLORS['text_secondary'])
+            self.data_count_label.pack(anchor="w")
+            
+            self.data_badge = None
+        
+        # Mark dropdown as None since it no longer exists
+        self.data_dropdown = None
 
         # Phase 3: Backend status indicators
         if PHASE3_ENABLED:
@@ -1253,22 +1202,37 @@ class SystemEntryWizard(ctk.CTk):
             messagebox.showerror("Error", "Failed to save system!")
 
     def _save_system_via_provider(self, system_data: dict):
-        """Save system using data provider (Phase 3)"""
+        """Save system using data provider (Phase 3) - UNIFIED with YH-Database"""
         try:
-            # Check if system exists
-            existing = self.data_provider.get_system_by_name(system_data['name'])
-            if existing:
-                confirm = messagebox.askyesno("Overwrite", f"System '{system_data['name']}' exists. Overwrite?")
-                if not confirm:
-                    return
-                # Delete existing system before adding new one
-                # This ensures we replace planets/moons/stations completely
-                self.data_provider.delete_system(existing['id'])
+            # Get current data source to determine which database to write to
+            from common.data_source_manager import get_data_source_manager
+            manager = get_data_source_manager()
+            current_source = manager.get_current()
+            
+            # Determine which database path to use
+            db_path = str(current_source.path)
+            logging.info(f"Saving system to: {current_source.display_name} ({db_path})")
+            
+            # Import and use the database directly for YH-Database writes
+            from src.common.database import HavenDatabase
+            
+            with HavenDatabase(db_path) as db:
+                # Check if system already exists
+                try:
+                    existing = db.get_system_by_name(system_data['name'])
+                    if existing:
+                        confirm = messagebox.askyesno("Overwrite", f"System '{system_data['name']}' exists. Overwrite?")
+                        if not confirm:
+                            return
+                        # Delete existing before adding new
+                        db.delete_system(existing['id'])
+                except Exception:
+                    pass  # System doesn't exist, which is fine
+                
+                # Add system to the selected database
+                db.add_system(system_data)
 
-            # Add system (either new or replacement)
-            self.data_provider.add_system(system_data)
-
-            messagebox.showinfo("Success", f"System '{self.system_name}' saved with {len(self.planets)} planet(s)!")
+            messagebox.showinfo("Success", f"System '{self.system_name}' saved to {current_source.display_name} with {len(self.planets)} planet(s)!")
 
             # Clear and reset
             self.clear_page1()
@@ -1277,7 +1241,7 @@ class SystemEntryWizard(ctk.CTk):
             self.show_page(1)
 
         except Exception as e:
-            logging.exception(f"Failed to save via data provider: {e}")
+            logging.exception(f"Failed to save to database: {e}")
             messagebox.showerror("Error", f"Failed to save system: {e}")
 
     def _save_system_via_json(self, system_data: dict):
@@ -1347,6 +1311,20 @@ class SystemEntryWizard(ctk.CTk):
 
 
 def main():
+    """Main entry point - NOW RESPECTS DATA SOURCE CONTEXT"""
+    import os
+    
+    # Get data source from environment variable (set by control_room)
+    data_source = os.environ.get('HAVEN_DATA_SOURCE', 'production')
+    
+    # Register data source with manager
+    from common.data_source_manager import get_data_source_manager
+    manager = get_data_source_manager()
+    manager.set_current(data_source)
+    
+    logging.info(f"System Entry Wizard initialized with data source: {data_source}")
+    
+    # Launch the wizard
     app = SystemEntryWizard()
     app.mainloop()
 
