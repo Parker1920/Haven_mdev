@@ -37,7 +37,8 @@ DATA_DIR = PROJECT_ROOT / "data"
 JSON_DATA_PATH = DATA_DIR / "data.json"
 
 # SQLite database file (for database backend)
-DATABASE_PATH = DATA_DIR / "haven.db"
+# This is the MASTER database - EXE and Mobile versions export JSON that gets imported here
+DATABASE_PATH = DATA_DIR / "VH-Database.db"
 
 # Backup directory
 BACKUP_DIR = DATA_DIR / "backups"

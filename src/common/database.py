@@ -502,7 +502,7 @@ class HavenDatabase:
 
     def add_system(self, system_data: Dict) -> str:
         """
-        Add new system to database
+        Add new system to database with transaction safety
 
         Args:
             system_data: System dictionary (same format as JSON)
@@ -513,45 +513,50 @@ class HavenDatabase:
         Raises:
             sqlite3.IntegrityError if system already exists
         """
-        cursor = self.conn.cursor()
+        try:
+            cursor = self.conn.cursor()
 
-        system_id = system_data.get('id')
-        if not system_id:
-            # Generate ID if not provided
-            import time
-            system_id = f"SYS_{system_data['region'].upper()}_{int(time.time())}"
+            system_id = system_data.get('id')
+            if not system_id:
+                # Generate ID if not provided
+                import time
+                system_id = f"SYS_{system_data['region'].upper()}_{int(time.time())}"
 
-        cursor.execute("""
-            INSERT INTO systems
-            (id, name, x, y, z, region, fauna, flora, sentinel,
-             materials, base_location, photo, attributes)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            system_id,
-            system_data['name'],
-            system_data['x'],
-            system_data['y'],
-            system_data['z'],
-            system_data['region'],
-            system_data.get('fauna'),
-            system_data.get('flora'),
-            system_data.get('sentinel'),
-            system_data.get('materials'),
-            system_data.get('base_location'),
-            system_data.get('photo'),
-            system_data.get('attributes')
-        ))
+            cursor.execute("""
+                INSERT INTO systems
+                (id, name, x, y, z, region, fauna, flora, sentinel,
+                 materials, base_location, photo, attributes)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                system_id,
+                system_data['name'],
+                system_data['x'],
+                system_data['y'],
+                system_data['z'],
+                system_data['region'],
+                system_data.get('fauna'),
+                system_data.get('flora'),
+                system_data.get('sentinel'),
+                system_data.get('materials'),
+                system_data.get('base_location'),
+                system_data.get('photo'),
+                system_data.get('attributes')
+            ))
 
-        # Add planets if provided
-        for planet in system_data.get('planets', []):
-            self._add_planet(cursor, system_id, planet)
+            # Add planets if provided
+            for planet in system_data.get('planets', []):
+                self._add_planet(cursor, system_id, planet)
 
-        # Add space station if provided
-        if 'space_station' in system_data and system_data['space_station'] is not None:
-            self._add_space_station(cursor, system_id, system_data['space_station'])
+            # Add space station if provided
+            if 'space_station' in system_data and system_data['space_station'] is not None:
+                self._add_space_station(cursor, system_id, system_data['space_station'])
 
-        self.conn.commit()
-        return system_id
+            self.conn.commit()
+            return system_id
+        except Exception as e:
+            self.conn.rollback()
+            logger.error(f"Failed to add system, rolled back transaction: {e}")
+            raise
 
     def _add_planet(self, cursor, system_id: str, planet_data: Dict) -> int:
         """Add planet to system"""
@@ -625,52 +630,57 @@ class HavenDatabase:
 
     def update_system(self, system_id: str, updates: Dict):
         """
-        Update system fields
+        Update system fields with transaction safety
 
         Args:
             system_id: System ID
             updates: Dictionary of fields to update
         """
-        cursor = self.conn.cursor()
+        try:
+            cursor = self.conn.cursor()
 
-        # Build dynamic UPDATE query for simple fields
-        simple_fields = ['name', 'x', 'y', 'z', 'region', 'fauna', 'flora',
-                        'sentinel', 'materials', 'base_location', 'photo', 'attributes']
+            # Build dynamic UPDATE query for simple fields
+            simple_fields = ['name', 'x', 'y', 'z', 'region', 'fauna', 'flora',
+                            'sentinel', 'materials', 'base_location', 'photo', 'attributes']
 
-        fields = []
-        values = []
-        for key, value in updates.items():
-            if key in simple_fields:
-                fields.append(f"{key} = ?")
-                values.append(value)
+            fields = []
+            values = []
+            for key, value in updates.items():
+                if key in simple_fields:
+                    fields.append(f"{key} = ?")
+                    values.append(value)
 
-        if fields:
-            values.append(system_id)
-            cursor.execute(f"""
-                UPDATE systems
-                SET {', '.join(fields)}, modified_at = CURRENT_TIMESTAMP
-                WHERE id = ?
-            """, values)
+            if fields:
+                values.append(system_id)
+                cursor.execute(f"""
+                    UPDATE systems
+                    SET {', '.join(fields)}, modified_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                """, values)
 
-        # Handle planets separately if provided
-        if 'planets' in updates:
-            # Delete existing planets (cascade will delete moons)
-            cursor.execute("DELETE FROM planets WHERE system_id = ?", (system_id,))
-            # Add new planets
-            for planet in updates['planets']:
-                self._add_planet(cursor, system_id, planet)
+            # Handle planets separately if provided
+            if 'planets' in updates:
+                # Delete existing planets (cascade will delete moons)
+                cursor.execute("DELETE FROM planets WHERE system_id = ?", (system_id,))
+                # Add new planets
+                for planet in updates['planets']:
+                    self._add_planet(cursor, system_id, planet)
 
-        # Handle space station if provided
-        if 'space_station' in updates:
-            cursor.execute("DELETE FROM space_stations WHERE system_id = ?", (system_id,))
-            if updates['space_station']:
-                self._add_space_station(cursor, system_id, updates['space_station'])
+            # Handle space station if provided
+            if 'space_station' in updates:
+                cursor.execute("DELETE FROM space_stations WHERE system_id = ?", (system_id,))
+                if updates['space_station']:
+                    self._add_space_station(cursor, system_id, updates['space_station'])
 
-        self.conn.commit()
+            self.conn.commit()
+        except Exception as e:
+            self.conn.rollback()
+            logger.error(f"Failed to update system, rolled back transaction: {e}")
+            raise
 
     def delete_system(self, system_id: str):
         """
-        Delete system and all related data
+        Delete system and all related data with transaction safety
 
         Foreign key cascade will automatically delete:
         - Planets
@@ -680,9 +690,14 @@ class HavenDatabase:
         Args:
             system_id: System ID
         """
-        cursor = self.conn.cursor()
-        cursor.execute("DELETE FROM systems WHERE id = ?", (system_id,))
-        self.conn.commit()
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("DELETE FROM systems WHERE id = ?", (system_id,))
+            self.conn.commit()
+        except Exception as e:
+            self.conn.rollback()
+            logger.error(f"Failed to delete system, rolled back transaction: {e}")
+            raise
 
     def system_exists(self, name: str) -> bool:
         """Check if system with given name exists"""

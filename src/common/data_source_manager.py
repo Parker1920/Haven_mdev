@@ -83,23 +83,24 @@ class DataSourceManager:
         except ImportError:
             logger.warning("Could not import settings; using defaults")
             PROJECT_ROOT = Path.cwd()
-            DATABASE_PATH = PROJECT_ROOT / "data" / "haven.db"
-            USE_DATABASE = False
+            DATABASE_PATH = PROJECT_ROOT / "data" / "VH-Database.db"
+            USE_DATABASE = True
         
-        # ==================== PRODUCTION SOURCE ====================
-        prod_path = PROJECT_ROOT / "data" / "data.json"
-        prod_count = self._count_json_systems(prod_path)
+        # ==================== PRODUCTION SOURCE (MASTER DATABASE) ====================
+        # The MASTER production database - VH-Database.db
+        # EXE and Mobile versions export JSON files which get imported here
+        prod_path = DATABASE_PATH  # Points to VH-Database.db
+        prod_count = self._count_database_systems(prod_path)
         prod_size = self._get_file_size_mb(prod_path)
-        
-        backend = "database" if USE_DATABASE else "json"
+
         self._sources["production"] = DataSourceInfo(
             name="production",
-            display_name="Production Data",
+            display_name="Production (Master Database)",
             path=prod_path,
-            backend_type=backend,
+            backend_type="database",
             system_count=prod_count,
-            description=f"Real production systems ({prod_count:,} systems)" 
-                       if prod_count > 0 else "Production data (empty)",
+            description=f"Master production database ({prod_count:,} systems)"
+                       if prod_count > 0 else "Master production database (empty - ready for data)",
             size_mb=prod_size,
             icon="📊"
         )
@@ -138,22 +139,8 @@ class DataSourceManager:
             icon="🔬"
         )
         
-        # ==================== YH-DATABASE SOURCE (OFFICIAL MAP) ====================
-        vh_db_path = PROJECT_ROOT / "data" / "VH-Database.db"
-        vh_db_count = self._count_database_systems(vh_db_path)
-        vh_db_size = self._get_file_size_mb(vh_db_path)
-        
-        self._sources["yh_database"] = DataSourceInfo(
-            name="yh_database",
-            display_name="YH-Database (Official Map)",
-            path=vh_db_path,
-            backend_type="database",
-            system_count=vh_db_count,
-            description="Official Haven Map - Ready for 1 billion+ star systems" 
-                       if vh_db_count >= 0 else "YH-Database (not found)",
-            size_mb=vh_db_size,
-            icon="🌍"
-        )
+        # NOTE: "yh_database" source removed - it's now the "production" source above
+        # VH-Database.db is THE master production database
     
     @staticmethod
     def _get_file_size_mb(path: Path) -> float:

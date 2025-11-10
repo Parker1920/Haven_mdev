@@ -75,15 +75,13 @@ try:
             get_data_provider,
             get_current_backend
         )
-        logging.info("[Phase 4] Master Edition: Using settings configuration")
-    
-    PHASE4_ENABLED = True
-    logging.info("[Phase 4] Map Generator database integration enabled")
+        logging.info("Master Edition: Using settings configuration")
+
+    logging.info("Map Generator database integration enabled")
 except ImportError as e:
-    # Fallback if Phase 4 modules not available - map will use JSON directly
-    PHASE4_ENABLED = False
+    # Fallback if database modules not available - map will use JSON directly
     USE_DATABASE = False
-    logging.warning(f"[Phase 4] Database integration disabled - using JSON fallback: {e}")
+    logging.warning(f"Database integration disabled - using JSON fallback: {e}")
 
 
 # ============================================================================
@@ -184,8 +182,8 @@ def load_systems(path: Path = DATA_FILE) -> pd.DataFrame:
     data_file_resolved = Path(DATA_FILE).resolve()
     is_custom_path = path_resolved != data_file_resolved
     
-    # Phase 4: Try to use data provider first (only if using default production data path)
-    if PHASE4_ENABLED and USE_DATABASE and not is_custom_path:
+    # Try to use data provider first (only if using default production data path)
+    if USE_DATABASE and not is_custom_path:
         try:
             provider = get_data_provider()
             backend = get_current_backend()

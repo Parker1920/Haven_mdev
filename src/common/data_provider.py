@@ -96,15 +96,16 @@ class JSONDataProvider:
             return json.load(f)
 
     def _save_data(self, data: Dict):
-        """Save entire JSON file"""
+        """Save entire JSON file atomically with rollback protection"""
         # Update metadata
         from datetime import datetime
+        from common.atomic_write import atomic_write_json
+
         if "_meta" in data:
             data["_meta"]["last_modified"] = datetime.now().isoformat()
 
-        self.json_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(self.json_path, 'w', encoding='utf-8') as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
+        # Use atomic write to prevent corruption from crashes or errors
+        atomic_write_json(data, self.json_path)
 
     def get_all_systems(self, region: Optional[str] = None, include_planets: bool = False) -> List[Dict]:
         """Get all systems, optionally filtered by region"""

@@ -2,7 +2,6 @@ from __future__ import annotations
 import sys
 import subprocess
 import threading
-import shlex
 import os
 from datetime import datetime
 from pathlib import Path
@@ -25,20 +24,13 @@ _proj_root = project_root()
 if str(_proj_root) not in sys.path:
     sys.path.insert(0, str(_proj_root))
 
-try:
-    from config.settings import (
-        USE_DATABASE, AUTO_DETECT_BACKEND,
-        get_data_provider, get_current_backend,
-        JSON_DATA_PATH, DATABASE_PATH,
-        SHOW_BACKEND_STATUS, SHOW_SYSTEM_COUNT,
-        ENABLE_DATABASE_STATS
-    )
-    PHASE2_ENABLED = True
-except ImportError as e:
-    # Fallback if Phase 2 modules not available
-    PHASE2_ENABLED = False
-    USE_DATABASE = False
-    print(f"[WARN] Phase 2 disabled - config.settings import failed: {e}", file=sys.stderr)
+from config.settings import (
+    USE_DATABASE, AUTO_DETECT_BACKEND,
+    get_data_provider, get_current_backend,
+    JSON_DATA_PATH, DATABASE_PATH,
+    SHOW_BACKEND_STATUS, SHOW_SYSTEM_COUNT,
+    ENABLE_DATABASE_STATS
+)
 
 # Theme and colors (load from themes/haven_theme.json if available)
 THEMES = {
@@ -165,11 +157,10 @@ class ControlRoom(ctk.CTk):
             # Initialize VH-Database backups on startup
             self._initialize_vh_database_backups()
 
-            # Phase 2: Initialize data provider
+            # Initialize data provider
             self.data_provider = None
             self.current_backend = 'json'
-            if PHASE2_ENABLED:
-                self._init_data_provider()
+            self._init_data_provider()
 
             logging.info("Building UI...")
             self._build_ui()
@@ -333,8 +324,8 @@ class ControlRoom(ctk.CTk):
         )
         self.data_indicator.pack(anchor="w")
 
-        # Phase 2: Backend indicator (shows JSON vs Database)
-        if PHASE2_ENABLED and SHOW_BACKEND_STATUS:
+        # Backend indicator (shows JSON vs Database)
+        if SHOW_BACKEND_STATUS:
             self.backend_indicator = ctk.CTkLabel(
                 self.data_indicator_frame,
                 text=f"Backend: {self.current_backend.upper()}",
@@ -343,8 +334,8 @@ class ControlRoom(ctk.CTk):
             )
             self.backend_indicator.pack(anchor="w")
 
-        # Phase 2: System count indicator
-        if PHASE2_ENABLED and SHOW_SYSTEM_COUNT and self.data_provider:
+        # System count indicator
+        if SHOW_SYSTEM_COUNT and self.data_provider:
             try:
                 count = self.data_provider.get_total_count()
                 self.count_indicator = ctk.CTkLabel(
@@ -390,15 +381,14 @@ class ControlRoom(ctk.CTk):
             self._mk_btn(sidebar, "🧪 System Test", self.show_system_test_menu,
                          fg=COLORS['accent_cyan'], hover="#00b8cc").pack(padx=20, pady=4, fill="x")
 
-            # Phase 2: Database Statistics button (only show if database backend active)
-            if PHASE2_ENABLED and ENABLE_DATABASE_STATS and self.current_backend == 'database':
+            # Database Statistics button (only show if database backend active)
+            if ENABLE_DATABASE_STATS and self.current_backend == 'database':
                 self._mk_btn(sidebar, "📊 Database Statistics", self.show_database_stats,
                              fg=COLORS['accent_cyan'], hover="#00b8cc").pack(padx=20, pady=4, fill="x")
-            
-            # Phase 2: Data Sync button (show if both JSON and database exist)
-            if PHASE2_ENABLED:
-                self._mk_btn(sidebar, "🔄 Sync Data (JSON ↔ DB)", self.show_sync_dialog,
-                             fg=COLORS['accent_purple'], hover=COLORS['accent_pink']).pack(padx=20, pady=4, fill="x")
+
+            # Data Sync button (show if both JSON and database exist)
+            self._mk_btn(sidebar, "🔄 Sync Data (JSON ↔ DB)", self.show_sync_dialog,
+                         fg=COLORS['accent_purple'], hover=COLORS['accent_pink']).pack(padx=20, pady=4, fill="x")
             
             # Phase 5: JSON Import button (import external JSON files)
             self._mk_btn(sidebar, "📥 Import JSON File", self.show_import_json_dialog,
@@ -1155,7 +1145,7 @@ between JSON and database backends.
                     # Import using JSONImporter
                     from src.migration.import_json import JSONImporter
                     
-                    importer = JSONImporter(use_database=USE_DATABASE if PHASE2_ENABLED else False)
+                    importer = JSONImporter(use_database=USE_DATABASE)
                     allow_updates = update_var.get()
                     
                     # Redirect output to text widget

@@ -39,20 +39,10 @@ _proj_root = project_root()
 if str(_proj_root) not in sys.path:
     sys.path.insert(0, str(_proj_root))
 
-try:
-    from config.settings import (
-        USE_DATABASE, get_data_provider, get_current_backend,
-        SHOW_BACKEND_STATUS, SHOW_SYSTEM_COUNT
-    )
-    # For user edition, disable Phase 3 database features entirely
-    # User edition is JSON-only and should never use database provider
-    PHASE3_ENABLED = not IS_USER_EDITION
-    print(f"[WIZARD INIT DEBUG] Phase 3 imported. PHASE3_ENABLED={PHASE3_ENABLED}", file=sys.stderr)
-except ImportError as e:
-    # Fallback if Phase 3 modules not available
-    PHASE3_ENABLED = False
-    USE_DATABASE = False
-    print(f"[WARN] Phase 3 disabled - config.settings import failed: {e}", file=sys.stderr)
+from config.settings import (
+    USE_DATABASE, get_data_provider, get_current_backend,
+    SHOW_BACKEND_STATUS, SHOW_SYSTEM_COUNT
+)
 
 # Settings
 SETTINGS_FILE = project_root() / "settings.json"
@@ -617,7 +607,7 @@ class SystemEntryWizard(ctk.CTk):
         self.data_provider = None
         self.current_backend = 'json'
         # For user edition, NEVER use database - always use JSON only
-        if PHASE3_ENABLED and not IS_USER_EDITION:
+        if not IS_USER_EDITION:
             self._init_data_provider()
 
         # System fields (Page 1)
@@ -745,8 +735,8 @@ class SystemEntryWizard(ctk.CTk):
         # Mark dropdown as None since it no longer exists
         self.data_dropdown = None
 
-        # Phase 3: Backend status indicators
-        if PHASE3_ENABLED:
+        # Backend status indicators
+        if not IS_USER_EDITION:
             status_frame = ctk.CTkFrame(header, fg_color="transparent")
             status_frame.pack(side="right", padx=15)
 
@@ -1191,8 +1181,8 @@ class SystemEntryWizard(ctk.CTk):
                 logging.error(f"System validation failed: {error}")
                 return
 
-            # Phase 3: Use data provider if available, otherwise fall back to JSON
-            if PHASE3_ENABLED and self.data_provider and self.current_backend == 'database':
+            # Use data provider if available (Master mode), otherwise fall back to JSON (User mode)
+            if not IS_USER_EDITION and self.data_provider and self.current_backend == 'database':
                 self._save_system_via_provider(system_data)
             else:
                 self._save_system_via_json(system_data)
@@ -1287,14 +1277,9 @@ class SystemEntryWizard(ctk.CTk):
                         return
                 obj[key] = system_data
 
-                # Save with backup
-                if self.data_file.exists():
-                    backup = self.data_file.with_suffix('.json.bak')
-                    shutil.copy2(self.data_file, backup)
-
-                # Write data while holding the file lock
-                with open(self.data_file, 'w', encoding='utf-8') as f:
-                    json.dump(obj, f, indent=2)
+                # Use atomic write for safety (handles backup and rollback automatically)
+                from common.atomic_write import atomic_write_json
+                atomic_write_json(obj, self.data_file)
 
             messagebox.showinfo("Success", f"System '{self.system_name}' saved with {len(self.planets)} planet(s)!")
 
