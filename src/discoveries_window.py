@@ -9,8 +9,21 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
-# Import color scheme from control room
-from control_room import COLORS
+# Define color scheme locally to avoid circular import
+COLORS = {
+    'bg_dark': '#0a0e27',
+    'bg_card': '#141b3d',
+    'accent_cyan': '#00d9ff',
+    'accent_purple': '#9d4edd',
+    'accent_pink': '#ff006e',
+    'text_primary': '#ffffff',
+    'text_secondary': '#8892b0',
+    'success': '#00ff88',
+    'warning': '#ffb703',
+    'error': '#ff006e',
+    'glass': '#1a2342',
+    'glow': '#00ffff'
+}
 
 
 class DiscoveriesWindow(ctk.CTkToplevel):
