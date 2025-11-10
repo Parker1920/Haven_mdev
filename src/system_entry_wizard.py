@@ -1089,6 +1089,14 @@ class SystemEntryWizard(ctk.CTk):
     
     def get_existing_systems(self):
         try:
+            # If database backend is enabled, query from database
+            if get_current_backend() == "database":
+                with HavenDatabase(str(DATABASE_PATH)) as db:
+                    systems = db.get_all_systems()
+                    system_names = [s.get('name') for s in systems if s.get('name')]
+                    return sorted(system_names)
+
+            # Otherwise, read from JSON file
             if self.data_file.exists():
                 with open(self.data_file, 'r', encoding='utf-8') as f:
                     obj = json.load(f)
@@ -1115,8 +1123,40 @@ class SystemEntryWizard(ctk.CTk):
         if choice == "(New System)":
             self.clear_page1()
             return
-        
+
         try:
+            # If database backend is enabled, load from database
+            if get_current_backend() == "database":
+                with HavenDatabase(str(DATABASE_PATH)) as db:
+                    sys_obj = db.get_system_by_name(choice)
+                    if not sys_obj:
+                        messagebox.showwarning("Not Found", f"System '{choice}' not found in database")
+                        return
+
+                    # Load fields
+                    self.name_entry.set(sys_obj.get('name', choice))
+                    self.region_entry.set(sys_obj.get('region', ''))
+                    self.x_entry.set(str(sys_obj.get('x', '')))
+                    self.y_entry.set(str(sys_obj.get('y', '')))
+                    self.z_entry.set(str(sys_obj.get('z', '')))
+                    self.attributes_textbox.set(sys_obj.get('attributes', ''))
+
+                    # Load planets with moons
+                    planets_data = sys_obj.get('planets', [])
+                    self.planets = []
+                    if planets_data and isinstance(planets_data, list):
+                        self.planets = list(planets_data)
+
+                    # Load space station if present
+                    station_data = sys_obj.get('space_station')
+                    if station_data and isinstance(station_data, dict):
+                        self.space_station = station_data
+                    else:
+                        self.space_station = None
+                    self.update_station_ui()
+                    return
+
+            # Otherwise, load from JSON file
             if self.data_file.exists():
                 with open(self.data_file, 'r', encoding='utf-8') as f:
                     obj = json.load(f)
