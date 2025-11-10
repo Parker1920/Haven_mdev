@@ -380,10 +380,19 @@ class EnhancedDiscoverySystem(commands.Cog):
                 'location_info': discovery_data.get('location_info')
             }
             
-            # Save to database
+            # Save to keeper database
             discovery_id = await self.db.add_discovery(enhanced_data)
             enhanced_data['id'] = discovery_id
-            
+
+            # Also write to Haven VH-Database if enabled
+            try:
+                haven_discovery_id = self.haven.write_discovery_to_database(enhanced_data)
+                if haven_discovery_id:
+                    logger.info(f"Discovery also saved to Haven database with ID {haven_discovery_id}")
+            except Exception as e:
+                logger.warning(f"Could not write to Haven database: {e}")
+                # Continue execution - keeper.db save was successful
+
             # Update story progression - increment discovery count
             guild_id = str(interaction.guild.id)
             await self.db.increment_story_stats(guild_id, 'discoveries', 1)

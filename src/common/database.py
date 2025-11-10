@@ -152,6 +152,59 @@ class HavenDatabase:
             cursor.execute("ALTER TABLE space_stations ADD COLUMN sell_percent INTEGER")
             cursor.execute("ALTER TABLE space_stations ADD COLUMN buy_percent INTEGER")
 
+        # Discoveries table - for Discord bot integration
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS discoveries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+                -- Discovery Classification
+                discovery_type TEXT NOT NULL,
+                discovery_name TEXT,
+
+                -- Location Linking (flexible multi-level)
+                system_id TEXT,
+                planet_id INTEGER,
+                moon_id INTEGER,
+                location_type TEXT NOT NULL,
+                location_name TEXT,
+
+                -- Discovery Details
+                description TEXT NOT NULL,
+                coordinates TEXT,
+                condition TEXT,
+                time_period TEXT,
+                significance TEXT,
+
+                -- Evidence & Media
+                photo_url TEXT,
+                evidence_urls TEXT,
+
+                -- Attribution
+                discovered_by TEXT,
+                discord_user_id TEXT,
+                discord_guild_id TEXT,
+                submission_timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+
+                -- Pattern & Analysis
+                pattern_matches INTEGER DEFAULT 0,
+                mystery_tier INTEGER DEFAULT 0,
+                analysis_status TEXT DEFAULT 'pending',
+                tags TEXT,
+                metadata TEXT,
+
+                -- Foreign Keys
+                FOREIGN KEY (system_id) REFERENCES systems(id) ON DELETE SET NULL,
+                FOREIGN KEY (planet_id) REFERENCES planets(id) ON DELETE SET NULL,
+                FOREIGN KEY (moon_id) REFERENCES moons(id) ON DELETE SET NULL,
+
+                -- Location constraint
+                CHECK (
+                    (system_id IS NOT NULL) OR
+                    (location_type IN ('space', 'deep_space') AND location_name IS NOT NULL)
+                )
+            )
+        """)
+
         # Metadata table for tracking database version and stats
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS _metadata (
@@ -169,6 +222,14 @@ class HavenDatabase:
         cursor.execute("""
             INSERT OR IGNORE INTO _metadata (key, value)
             VALUES ('last_import', '')
+        """)
+        cursor.execute("""
+            INSERT OR IGNORE INTO _metadata (key, value)
+            VALUES ('discoveries_schema_version', '1.0.0')
+        """)
+        cursor.execute("""
+            INSERT OR IGNORE INTO _metadata (key, value)
+            VALUES ('discoveries_enabled', 'true')
         """)
 
         conn.commit()
@@ -190,6 +251,14 @@ class HavenDatabase:
 
         # Space stations indexes
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_space_stations_system ON space_stations(system_id)")
+
+        # Discoveries indexes
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_discoveries_system ON discoveries(system_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_discoveries_planet ON discoveries(planet_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_discoveries_moon ON discoveries(moon_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_discoveries_type ON discoveries(discovery_type)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_discoveries_location_type ON discoveries(location_type)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_discoveries_timestamp ON discoveries(submission_timestamp)")
 
         conn.commit()
 
@@ -704,6 +773,193 @@ class HavenDatabase:
         cursor = self.conn.cursor()
         cursor.execute("SELECT 1 FROM systems WHERE name = ? LIMIT 1", (name,))
         return cursor.fetchone() is not None
+
+    # ========== DISCOVERY METHODS ==========
+
+    def add_discovery(self, discovery_data: Dict) -> int:
+        """
+        Add a new discovery to the database
+
+        Args:
+            discovery_data: Dictionary with discovery fields:
+                - discovery_type (required): Type of discovery
+                - description (required): Discovery description
+                - location_type (required): planet/moon/space/deep_space
+                - system_id (optional): System ID
+                - planet_id (optional): Planet ID
+                - moon_id (optional): Moon ID
+                - location_name (optional): Name for space/deep_space
+                - discovery_name, coordinates, condition, time_period, significance
+                - photo_url, evidence_urls, discovered_by, discord_user_id, discord_guild_id
+                - pattern_matches, mystery_tier, analysis_status, tags, metadata
+
+        Returns:
+            Discovery ID
+
+        Raises:
+            ValueError: If required fields are missing
+        """
+        required_fields = ['discovery_type', 'description', 'location_type']
+        for field in required_fields:
+            if field not in discovery_data:
+                raise ValueError(f"Missing required field: {field}")
+
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("""
+                INSERT INTO discoveries (
+                    discovery_type, discovery_name, system_id, planet_id, moon_id,
+                    location_type, location_name, description, coordinates, condition,
+                    time_period, significance, photo_url, evidence_urls,
+                    discovered_by, discord_user_id, discord_guild_id,
+                    pattern_matches, mystery_tier, analysis_status, tags, metadata
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                discovery_data['discovery_type'],
+                discovery_data.get('discovery_name'),
+                discovery_data.get('system_id'),
+                discovery_data.get('planet_id'),
+                discovery_data.get('moon_id'),
+                discovery_data['location_type'],
+                discovery_data.get('location_name'),
+                discovery_data['description'],
+                discovery_data.get('coordinates'),
+                discovery_data.get('condition'),
+                discovery_data.get('time_period'),
+                discovery_data.get('significance'),
+                discovery_data.get('photo_url'),
+                discovery_data.get('evidence_urls'),
+                discovery_data.get('discovered_by'),
+                discovery_data.get('discord_user_id'),
+                discovery_data.get('discord_guild_id'),
+                discovery_data.get('pattern_matches', 0),
+                discovery_data.get('mystery_tier', 0),
+                discovery_data.get('analysis_status', 'pending'),
+                discovery_data.get('tags'),
+                discovery_data.get('metadata')
+            ))
+            self.conn.commit()
+            return cursor.lastrowid
+        except Exception as e:
+            self.conn.rollback()
+            logger.error(f"Failed to add discovery, rolled back transaction: {e}")
+            raise
+
+    def get_discoveries(
+        self,
+        system_id: Optional[str] = None,
+        planet_id: Optional[int] = None,
+        moon_id: Optional[int] = None,
+        discovery_type: Optional[str] = None,
+        limit: int = 100
+    ) -> List[Dict]:
+        """
+        Get discoveries with optional filtering
+
+        Args:
+            system_id: Filter by system
+            planet_id: Filter by planet
+            moon_id: Filter by moon
+            discovery_type: Filter by discovery type
+            limit: Maximum number of results
+
+        Returns:
+            List of discovery dictionaries
+        """
+        cursor = self.conn.cursor()
+        query = "SELECT * FROM discoveries WHERE 1=1"
+        params = []
+
+        if system_id:
+            query += " AND system_id = ?"
+            params.append(system_id)
+        if planet_id:
+            query += " AND planet_id = ?"
+            params.append(planet_id)
+        if moon_id:
+            query += " AND moon_id = ?"
+            params.append(moon_id)
+        if discovery_type:
+            query += " AND discovery_type = ?"
+            params.append(discovery_type)
+
+        query += " ORDER BY submission_timestamp DESC LIMIT ?"
+        params.append(limit)
+
+        cursor.execute(query, params)
+        return [dict(row) for row in cursor.fetchall()]
+
+    def get_discovery_by_id(self, discovery_id: int) -> Optional[Dict]:
+        """Get a single discovery by ID"""
+        cursor = self.conn.cursor()
+        cursor.execute("SELECT * FROM discoveries WHERE id = ?", (discovery_id,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+    def update_discovery(self, discovery_id: int, updates: Dict):
+        """
+        Update discovery fields
+
+        Args:
+            discovery_id: Discovery ID
+            updates: Dictionary of fields to update
+        """
+        if not updates:
+            return
+
+        # Build UPDATE query dynamically
+        fields = []
+        values = []
+        for key, value in updates.items():
+            fields.append(f"{key} = ?")
+            values.append(value)
+
+        values.append(discovery_id)
+        query = f"UPDATE discoveries SET {', '.join(fields)} WHERE id = ?"
+
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(query, values)
+            self.conn.commit()
+        except Exception as e:
+            self.conn.rollback()
+            logger.error(f"Failed to update discovery, rolled back transaction: {e}")
+            raise
+
+    def delete_discovery(self, discovery_id: int):
+        """Delete a discovery"""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("DELETE FROM discoveries WHERE id = ?", (discovery_id,))
+            self.conn.commit()
+        except Exception as e:
+            self.conn.rollback()
+            logger.error(f"Failed to delete discovery, rolled back transaction: {e}")
+            raise
+
+    def get_discovery_count(
+        self,
+        system_id: Optional[str] = None,
+        planet_id: Optional[int] = None,
+        moon_id: Optional[int] = None
+    ) -> int:
+        """Get count of discoveries for a system/planet/moon"""
+        cursor = self.conn.cursor()
+        query = "SELECT COUNT(*) FROM discoveries WHERE 1=1"
+        params = []
+
+        if system_id:
+            query += " AND system_id = ?"
+            params.append(system_id)
+        if planet_id:
+            query += " AND planet_id = ?"
+            params.append(planet_id)
+        if moon_id:
+            query += " AND moon_id = ?"
+            params.append(moon_id)
+
+        cursor.execute(query, params)
+        return cursor.fetchone()[0]
 
     # ========== METADATA METHODS ==========
 

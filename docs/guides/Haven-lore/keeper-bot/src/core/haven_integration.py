@@ -1,11 +1,13 @@
 """
 Haven Integration System
 Integrates The Keeper with the Haven_mdev star mapping system.
+Supports both JSON and SQLite database backends.
 """
 
 import json
 import os
 import logging
+import sqlite3
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 from pathlib import Path
@@ -14,12 +16,23 @@ logger = logging.getLogger('keeper.haven_integration')
 
 class HavenIntegration:
     """Handles integration with the Haven_mdev star mapping system."""
-    
+
     def __init__(self, haven_data_path: str = None):
         """Initialize Haven integration."""
-        self.haven_data_path = haven_data_path or self._find_haven_data()
+        # Check if we should use database mode
+        self.use_database = os.getenv('USE_HAVEN_DATABASE', 'true').lower() == 'true'
+
+        # Try to find database first if enabled
+        if self.use_database:
+            self.db_path = self._find_haven_database()
+            self.haven_data_path = None
+        else:
+            self.db_path = None
+            self.haven_data_path = haven_data_path or self._find_haven_data()
+
         self.haven_data = {}
         self.last_loaded = None
+        self._db_connection = None
         
     def _find_haven_data(self) -> Optional[str]:
         """Attempt to find Haven data.json file."""
@@ -53,22 +66,114 @@ class HavenIntegration:
         logger.warning("Haven data.json not found in expected locations")
         logger.info("Bot will run in standalone mode without Haven integration")
         return None
-    
+
+    def _find_haven_database(self) -> Optional[str]:
+        """Attempt to find Haven VH-Database.db file."""
+        # First check environment variable
+        env_path = os.getenv('HAVEN_DB_PATH')
+        if env_path and os.path.exists(env_path):
+            logger.info(f"Found Haven database from HAVEN_DB_PATH: {env_path}")
+            return env_path
+
+        # Common paths to check
+        possible_paths = [
+            # Windows paths
+            os.path.join(os.path.expanduser("~"), "Desktop", "Haven_mdev", "data", "VH-Database.db"),
+            os.path.join(os.path.expanduser("~"), "Desktop", "untitled folder", "Haven_mdev", "data", "VH-Database.db"),
+            # Relative paths
+            "../../../Haven_mdev/data/VH-Database.db",
+            "../../Haven_mdev/data/VH-Database.db",
+            "../Haven_mdev/data/VH-Database.db",
+            # macOS/Linux paths
+            "/Users/parkerstouffer/Desktop/Haven_mdev/data/VH-Database.db",
+            os.path.expanduser("~/Desktop/Haven_mdev/data/VH-Database.db")
+        ]
+
+        for path in possible_paths:
+            if os.path.exists(path):
+                logger.info(f"Found Haven database at: {path}")
+                return path
+
+        logger.warning("Haven VH-Database.db not found in expected locations")
+        logger.info("Falling back to JSON mode if available")
+
+        # Fallback to JSON if database not found
+        self.use_database = False
+        return None
+
     async def load_haven_data(self) -> bool:
-        """Load Haven star system data."""
+        """Load Haven star system data from database or JSON."""
+        if self.use_database and self.db_path:
+            return await self._load_from_database()
+        elif self.haven_data_path and os.path.exists(self.haven_data_path):
+            return await self._load_from_json()
+        else:
+            logger.warning("No Haven data source available")
+            return False
+
+    async def _load_from_database(self) -> bool:
+        """Load Haven data from SQLite database."""
+        if not self.db_path or not os.path.exists(self.db_path):
+            return False
+
+        try:
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+
+            # Load all systems with their planets and moons
+            cursor.execute("SELECT * FROM systems")
+            systems = cursor.fetchall()
+
+            self.haven_data = {}
+            for system_row in systems:
+                system = dict(system_row)
+                system_id = system['id']
+                system_name = system['name']
+
+                # Load planets for this system
+                cursor.execute("SELECT * FROM planets WHERE system_id = ?", (system_id,))
+                planets_rows = cursor.fetchall()
+
+                planets = []
+                for planet_row in planets_rows:
+                    planet = dict(planet_row)
+                    planet_id = planet['id']
+
+                    # Load moons for this planet
+                    cursor.execute("SELECT * FROM moons WHERE planet_id = ?", (planet_id,))
+                    moons_rows = cursor.fetchall()
+
+                    planet['moons'] = [dict(moon) for moon in moons_rows]
+                    planets.append(planet)
+
+                system['planets'] = planets
+                self.haven_data[system_name] = system
+
+            conn.close()
+            self.last_loaded = datetime.utcnow()
+            logger.info(f"Loaded {len(self.haven_data)} Haven systems from database")
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to load Haven database: {e}")
+            return False
+
+    async def _load_from_json(self) -> bool:
+        """Load Haven data from JSON file."""
         if not self.haven_data_path or not os.path.exists(self.haven_data_path):
             return False
-        
+
         try:
             with open(self.haven_data_path, 'r', encoding='utf-8') as f:
                 self.haven_data = json.load(f)
-            
+
             self.last_loaded = datetime.utcnow()
-            logger.info(f"Loaded {len(self.haven_data)} Haven systems")
+            logger.info(f"Loaded {len(self.haven_data)} Haven systems from JSON")
             return True
-            
+
         except Exception as e:
-            logger.error(f"Failed to load Haven data: {e}")
+            logger.error(f"Failed to load Haven JSON data: {e}")
             return False
     
     def get_all_systems(self) -> Dict[str, Dict]:
@@ -314,3 +419,103 @@ class HavenIntegration:
         
         logger.info(f"Backup created: {backup_path}")
         return backup_path
+
+    def write_discovery_to_database(self, discovery_data: Dict) -> Optional[int]:
+        """
+        Write a discovery directly to the VH-Database.db
+
+        Args:
+            discovery_data: Dictionary with discovery fields from bot
+
+        Returns:
+            Discovery ID if successful, None otherwise
+        """
+        if not self.use_database or not self.db_path:
+            logger.warning("Cannot write to database - not in database mode")
+            return None
+
+        try:
+            conn = sqlite3.connect(self.db_path)
+            conn.execute("PRAGMA foreign_keys = ON")
+            cursor = conn.cursor()
+
+            # Resolve system_id from system_name
+            system_name = discovery_data.get('system_name')
+            system_id = None
+            if system_name:
+                cursor.execute("SELECT id FROM systems WHERE name = ?", (system_name,))
+                result = cursor.fetchone()
+                if result:
+                    system_id = result[0]
+
+            # Resolve planet_id and moon_id from location
+            planet_id = None
+            moon_id = None
+            location_type = discovery_data.get('location_type', 'space')
+            location_name = discovery_data.get('location_name')
+
+            if location_type == 'planet' and location_name and system_id:
+                cursor.execute(
+                    "SELECT id FROM planets WHERE system_id = ? AND name = ?",
+                    (system_id, location_name)
+                )
+                result = cursor.fetchone()
+                if result:
+                    planet_id = result[0]
+
+            elif location_type == 'moon' and location_name and system_id:
+                # First get the planet, then the moon
+                cursor.execute("""
+                    SELECT m.id
+                    FROM moons m
+                    JOIN planets p ON m.planet_id = p.id
+                    WHERE p.system_id = ? AND m.name = ?
+                """, (system_id, location_name))
+                result = cursor.fetchone()
+                if result:
+                    moon_id = result[0]
+
+            # Insert discovery
+            cursor.execute("""
+                INSERT INTO discoveries (
+                    discovery_type, discovery_name, system_id, planet_id, moon_id,
+                    location_type, location_name, description, coordinates, condition,
+                    time_period, significance, photo_url, evidence_urls,
+                    discovered_by, discord_user_id, discord_guild_id,
+                    pattern_matches, mystery_tier, analysis_status, tags, metadata
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                discovery_data.get('discovery_type'),
+                discovery_data.get('discovery_name'),
+                system_id,
+                planet_id,
+                moon_id,
+                location_type,
+                location_name,
+                discovery_data.get('description'),
+                discovery_data.get('coordinates'),
+                discovery_data.get('condition'),
+                discovery_data.get('time_period'),
+                discovery_data.get('significance'),
+                discovery_data.get('photo_url') or discovery_data.get('evidence_url'),
+                discovery_data.get('evidence_urls'),
+                discovery_data.get('username') or discovery_data.get('discovered_by'),
+                discovery_data.get('user_id') or discovery_data.get('discord_user_id'),
+                discovery_data.get('guild_id') or discovery_data.get('discord_guild_id'),
+                discovery_data.get('pattern_matches', 0),
+                discovery_data.get('mystery_tier', 0),
+                discovery_data.get('analysis_status', 'pending'),
+                discovery_data.get('tags'),
+                discovery_data.get('metadata')
+            ))
+
+            conn.commit()
+            discovery_id = cursor.lastrowid
+            conn.close()
+
+            logger.info(f"Successfully wrote discovery #{discovery_id} to VH-Database")
+            return discovery_id
+
+        except Exception as e:
+            logger.error(f"Failed to write discovery to database: {e}")
+            return None
