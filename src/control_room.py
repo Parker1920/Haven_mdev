@@ -280,10 +280,14 @@ class ControlRoom(ctk.CTk):
         data_dropdown_frame = ctk.CTkFrame(sidebar, fg_color="transparent")
         data_dropdown_frame.pack(padx=20, pady=(0, 4), fill="x")
 
+        # Get available data sources dynamically from DataSourceManager
+        manager = get_data_source_manager()
+        available_sources = list(manager.get_all_sources().keys())
+
         self.data_dropdown = ctk.CTkOptionMenu(
             data_dropdown_frame,
             variable=self.data_source,
-            values=["production", "testing", "load_test", "yh_database"],
+            values=available_sources,  # Dynamic from DataSourceManager
             command=self._on_data_source_change,
             font=ctk.CTkFont(family="Segoe UI", size=13),
             dropdown_font=ctk.CTkFont(family="Segoe UI", size=12),
