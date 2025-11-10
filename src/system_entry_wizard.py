@@ -24,6 +24,7 @@ ctk.set_default_color_theme("blue")
 from common.paths import data_path, logs_dir, project_root
 from common.file_lock import FileLock
 from common.validation import validate_system_data, validate_coordinates
+from discoveries_window import DiscoveriesWindow
 import os
 
 # Check if running in User Edition mode
@@ -416,7 +417,48 @@ class PlanetMoonEditor(ctk.CTkToplevel):
     def remove_moon(self, index):
         self.moons.pop(index)
         self.render_moons()
-    
+
+    def view_moon_discoveries(self, moon_index):
+        """Open discoveries window for a moon"""
+        try:
+            # Check if database backend is enabled
+            if get_current_backend() != "database":
+                messagebox.showwarning(
+                    "Database Required",
+                    "Discoveries feature requires database backend.\n\nSwitch to database mode in Control Room to view discoveries."
+                )
+                return
+
+            moon = self.moons[moon_index]
+            planet_name = self.name_entry.get().strip()
+
+            if not planet_name:
+                messagebox.showerror("Error", "Planet name is required to view moon discoveries.")
+                return
+
+            # Import database here to avoid circular imports
+            from common.database import HavenDatabase
+            from config.settings import DATABASE_PATH
+
+            # Create location data for the moon
+            location_data = {
+                'name': moon['name'],
+                'type': 'moon',
+                'system_name': 'Current System',  # Would need system context
+                'planet_name': planet_name,
+                'system_id': None,  # Will be resolved by DiscoveriesWindow
+                'planet_id': None,  # Will be resolved by database query
+                'moon_id': None  # Will be resolved by database query
+            }
+
+            # Open discoveries window
+            db = HavenDatabase(str(DATABASE_PATH))
+            DiscoveriesWindow(self, location_data, db)
+
+        except Exception as e:
+            logging.error(f"Failed to open moon discoveries window: {e}")
+            messagebox.showerror("Error", f"Could not open discoveries window:\n{e}")
+
     def render_moons(self):
         for w in self.moons_list_container.winfo_children():
             w.destroy()
@@ -428,7 +470,9 @@ class PlanetMoonEditor(ctk.CTkToplevel):
             row.pack(fill="x", pady=4)
             ctk.CTkLabel(row, text=f"🌙 {moon['name']}", font=ctk.CTkFont(size=13)).pack(side="left", padx=10, pady=8)
             ctk.CTkButton(row, text="✏️", width=36, height=28, command=lambda idx=i: self.edit_moon(idx),
-                          fg_color=COLORS['accent_cyan'], hover_color=COLORS['glow']).pack(side="right", padx=(0, 5))
+                          fg_color=COLORS['accent_cyan'], hover_color=COLORS['glow']).pack(side="right", padx=(0, 3))
+            ctk.CTkButton(row, text="🔍", width=36, height=28, command=lambda idx=i: self.view_moon_discoveries(idx),
+                          fg_color=COLORS['accent_purple'], hover_color=COLORS['accent_cyan']).pack(side="right", padx=(0, 3))
             ctk.CTkButton(row, text="✖", width=36, height=28, command=lambda idx=i: self.remove_moon(idx),
                           fg_color=COLORS['bg_card'], hover_color=COLORS['accent_pink']).pack(side="right")
     
@@ -965,7 +1009,48 @@ class SystemEntryWizard(ctk.CTk):
         if confirm:
             self.planets.pop(index)
             self.render_upload_list()
-    
+
+    def view_planet_discoveries(self, planet_index):
+        """Open discoveries window for a planet"""
+        try:
+            # Check if database backend is enabled
+            if get_current_backend() != "database":
+                messagebox.showwarning(
+                    "Database Required",
+                    "Discoveries feature requires database backend.\n\nSwitch to database mode in Control Room to view discoveries."
+                )
+                return
+
+            planet = self.planets[planet_index]
+
+            # Get system info
+            system_name = self.name_entry.get().strip()
+            if not system_name:
+                messagebox.showerror("Error", "System name is required to view discoveries.")
+                return
+
+            # Import database here to avoid circular imports
+            from common.database import HavenDatabase
+            from config.settings import DATABASE_PATH
+
+            # Create location data for the planet
+            location_data = {
+                'name': planet['name'],
+                'type': 'planet',
+                'system_name': system_name,
+                'system_id': system_name,  # Will be resolved by DiscoveriesWindow
+                'planet_id': None,  # Will be resolved by database query
+                'moon_id': None
+            }
+
+            # Open discoveries window
+            db = HavenDatabase(str(DATABASE_PATH))
+            DiscoveriesWindow(self, location_data, db)
+
+        except Exception as e:
+            logging.error(f"Failed to open discoveries window: {e}")
+            messagebox.showerror("Error", f"Could not open discoveries window:\n{e}")
+
     def render_upload_list(self):
         for w in self.upload_list_scroll.winfo_children():
             w.destroy()
@@ -994,9 +1079,11 @@ class SystemEntryWizard(ctk.CTk):
             
             btn_row = ctk.CTkFrame(card, fg_color="transparent")
             btn_row.pack(fill="x", padx=15, pady=(0, 12))
-            
+
             ctk.CTkButton(btn_row, text="✏️ Edit", width=80, height=32, command=lambda idx=i: self.edit_planet(idx),
                           fg_color=COLORS['accent_cyan'], hover_color=COLORS['glow']).pack(side="left", padx=(0, 5))
+            ctk.CTkButton(btn_row, text="🔍 Discoveries", width=110, height=32, command=lambda idx=i: self.view_planet_discoveries(idx),
+                          fg_color=COLORS['accent_purple'], hover_color=COLORS['accent_cyan']).pack(side="left", padx=(0, 5))
             ctk.CTkButton(btn_row, text="✖ Remove", width=80, height=32, command=lambda idx=i: self.remove_planet(idx),
                           fg_color=COLORS['error'], hover_color="#cc0055").pack(side="left")
     

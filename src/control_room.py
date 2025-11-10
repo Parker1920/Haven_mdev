@@ -17,6 +17,7 @@ from common.paths import project_root, data_dir, logs_dir, dist_dir, config_dir,
 from common.progress import ProgressDialog, IndeterminateProgressDialog
 from common.data_source_manager import get_data_source_manager
 from common.vh_database_backup import backup_vh_database, cleanup_old_backups
+from discoveries_window import DiscoveriesWindow
 
 # Phase 2: Database integration imports
 # Ensure project root is in sys.path so config/ can be imported
