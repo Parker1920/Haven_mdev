@@ -179,9 +179,9 @@ class ControlRoom(ctk.CTk):
             if vh_db_path.exists():
                 logging.info("Creating backup of VH-Database on startup...")
                 backup_path = backup_vh_database(vh_db_path)
-                
+
                 if backup_path:
-                    logging.info(f"✓ Backup created: {backup_path.name}")
+                    logging.info(f"[OK] Backup created: {backup_path.name}")
                     
                     # Clean up old backups, keep last 10
                     deleted = cleanup_old_backups(keep_count=10)

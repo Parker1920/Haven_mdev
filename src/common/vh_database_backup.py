@@ -48,13 +48,13 @@ def backup_vh_database(source_path: Path = None, backup_dir: Path = None) -> Pat
             with sqlite3.connect(str(backup_path)) as backup_conn:
                 source_conn.backup(backup_conn)
         
-        logger.info(f"✓ Backup created: {backup_path}")
+        logger.info(f"[OK] Backup created: {backup_path}")
         logger.info(f"  Size: {backup_path.stat().st_size / (1024*1024):.2f} MB")
-        
+
         return backup_path
-    
+
     except Exception as e:
-        logger.error(f"✗ Backup failed: {e}")
+        logger.error(f"[ERROR] Backup failed: {e}")
         return None
 
 
@@ -88,12 +88,12 @@ def restore_vh_database(backup_path: Path, target_path: Path = None) -> bool:
         if target_path.exists():
             target_path.unlink()
         temp_path.rename(target_path)
-        
-        logger.info(f"✓ Restored from: {backup_path}")
+
+        logger.info(f"[OK] Restored from: {backup_path}")
         return True
-    
+
     except Exception as e:
-        logger.error(f"✗ Restore failed: {e}")
+        logger.error(f"[ERROR] Restore failed: {e}")
         if temp_path.exists():
             temp_path.unlink()
         return False

@@ -507,12 +507,106 @@ class AdminTools(commands.Cog):
                     )
                 
                 await interaction.followup.send(embed=embed)
-                
+
         except Exception as e:
             logger.error(f"Error in keeper config: {e}")
             error_embed = discord.Embed(
-                title="❌ Configuration Error", 
+                title="❌ Configuration Error",
                 description="Failed to update configuration.",
+                color=self.config['theme']['embed_colors']['error']
+            )
+            await interaction.followup.send(embed=error_embed)
+
+    @app_commands.command(name="reload-haven", description="Reload Haven star systems from database")
+    @app_commands.default_permissions(administrator=True)
+    async def reload_haven(self, interaction: discord.Interaction):
+        """Reload Haven star systems from VH-Database.db"""
+        await interaction.response.defer(ephemeral=True)
+
+        try:
+            # Get all cogs that have Haven integration
+            cogs_with_haven = []
+
+            # Check enhanced_discovery cog
+            enhanced_discovery = self.bot.get_cog('EnhancedDiscovery')
+            if enhanced_discovery and hasattr(enhanced_discovery, 'haven'):
+                cogs_with_haven.append(('EnhancedDiscovery', enhanced_discovery.haven))
+
+            # Check pattern_recognition cog
+            pattern_recognition = self.bot.get_cog('PatternRecognition')
+            if pattern_recognition and hasattr(pattern_recognition, 'haven'):
+                cogs_with_haven.append(('PatternRecognition', pattern_recognition.haven))
+
+            # Check archive_system cog
+            archive_system = self.bot.get_cog('ArchiveSystem')
+            if archive_system and hasattr(archive_system, 'haven'):
+                cogs_with_haven.append(('ArchiveSystem', archive_system.haven))
+
+            # Check community_features cog
+            community_features = self.bot.get_cog('CommunityFeatures')
+            if community_features and hasattr(community_features, 'haven'):
+                cogs_with_haven.append(('CommunityFeatures', community_features.haven))
+
+            if not cogs_with_haven:
+                error_embed = discord.Embed(
+                    title="❌ No Haven Integration",
+                    description="No cogs with Haven integration found.",
+                    color=self.config['theme']['embed_colors']['error']
+                )
+                await interaction.followup.send(embed=error_embed)
+                return
+
+            # Reload Haven data for each cog
+            reload_results = []
+            for cog_name, haven_instance in cogs_with_haven:
+                success = await haven_instance.load_haven_data()
+                system_count = len(haven_instance.get_all_systems())
+                reload_results.append((cog_name, success, system_count))
+
+            # Build result embed
+            if all(result[1] for result in reload_results):
+                # All successful
+                total_systems = reload_results[0][2] if reload_results else 0
+
+                embed = discord.Embed(
+                    title="✅ Haven Data Reloaded",
+                    description=f"Successfully reloaded Haven star systems from database.",
+                    color=self.config['theme']['embed_colors']['success']
+                )
+                embed.add_field(
+                    name="📊 Systems Loaded",
+                    value=f"{total_systems} star system(s)",
+                    inline=False
+                )
+                embed.add_field(
+                    name="🔄 Cogs Updated",
+                    value="\n".join([f"✅ {name}" for name, _, _ in reload_results]),
+                    inline=False
+                )
+
+                logger.info(f"Admin {interaction.user} reloaded Haven data: {total_systems} systems")
+            else:
+                # Some failed
+                embed = discord.Embed(
+                    title="⚠️ Haven Reload Partial",
+                    description="Some cogs failed to reload Haven data.",
+                    color=self.config['theme']['embed_colors']['warning']
+                )
+                for name, success, count in reload_results:
+                    status = "✅" if success else "❌"
+                    embed.add_field(
+                        name=f"{status} {name}",
+                        value=f"{count} systems" if success else "Failed to load",
+                        inline=False
+                    )
+
+            await interaction.followup.send(embed=embed)
+
+        except Exception as e:
+            logger.error(f"Error reloading Haven data: {e}")
+            error_embed = discord.Embed(
+                title="❌ Reload Error",
+                description=f"Failed to reload Haven data: {str(e)}",
                 color=self.config['theme']['embed_colors']['error']
             )
             await interaction.followup.send(embed=error_embed)
