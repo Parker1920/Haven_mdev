@@ -41,8 +41,9 @@ if str(_proj_root) not in sys.path:
 
 from config.settings import (
     USE_DATABASE, get_data_provider, get_current_backend,
-    SHOW_BACKEND_STATUS, SHOW_SYSTEM_COUNT
+    SHOW_BACKEND_STATUS, SHOW_SYSTEM_COUNT, DATABASE_PATH
 )
+from src.common.database import HavenDatabase
 
 # Settings
 SETTINGS_FILE = project_root() / "settings.json"
@@ -1254,10 +1255,7 @@ class SystemEntryWizard(ctk.CTk):
             # Determine which database path to use
             db_path = str(current_source.path)
             logging.info(f"Saving system to: {current_source.display_name} ({db_path})")
-            
-            # Import and use the database directly for YH-Database writes
-            from src.common.database import HavenDatabase
-            
+
             with HavenDatabase(db_path) as db:
                 # Check if system already exists
                 try:
