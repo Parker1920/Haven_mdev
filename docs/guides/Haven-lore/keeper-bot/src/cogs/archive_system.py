@@ -385,6 +385,7 @@ class ArchiveSystem(commands.Cog):
         name="pattern-manager",
         description="🌀 Manage and analyze detected patterns"
     )
+    @app_commands.default_permissions(administrator=True)
     async def pattern_manager(self, interaction: discord.Interaction):
         """Pattern management interface."""
         await interaction.response.defer()

@@ -475,6 +475,7 @@ class EnhancedDiscoverySystem(commands.Cog):
         name="haven-export",
         description="📤 Export discoveries for Haven star map integration"
     )
+    @app_commands.default_permissions(administrator=True)
     async def export_to_haven(self, interaction: discord.Interaction, 
                             system_name: Optional[str] = None):
         """Export discoveries in Haven-compatible format."""

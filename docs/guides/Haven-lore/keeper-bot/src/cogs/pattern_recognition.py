@@ -544,6 +544,7 @@ class PatternRecognition(commands.Cog):
         name="pattern-analysis",
         description="🌀 Manually trigger pattern analysis"
     )
+    @app_commands.default_permissions(administrator=True)
     @app_commands.describe(discovery_id="Discovery ID to analyze for patterns")
     async def manual_pattern_analysis(self, interaction: discord.Interaction, discovery_id: int):
         """Manually trigger pattern analysis for testing."""
