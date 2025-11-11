@@ -128,6 +128,178 @@ class JSONImporter:
 
         return normalized
 
+    def _is_keeper_format(self, data: dict) -> bool:
+        """
+        Check if JSON is in Keeper bot discoveries format
+        
+        Keeper format has:
+        - "discoveries" key with list of discovery objects
+        - "metadata" or other non-system keys
+        - No standard system fields (name, x, y, z, region)
+        
+        Returns:
+            True if appears to be Keeper format
+        """
+        # Check if this looks like Keeper discoveries format
+        if 'discoveries' in data and isinstance(data.get('discoveries'), list):
+            return True
+        
+        # Check if file has no systems but has discovery-like structure
+        has_systems = any(
+            k != "_meta" and isinstance(v, dict) and 
+            all(field in v for field in ['name', 'x', 'y', 'z', 'region'])
+            for k, v in data.items()
+        )
+        
+        return not has_systems and len(data) > 1
+
+    def _import_keeper_discoveries(self, data: dict, file_path: Path) -> bool:
+        """
+        Import discoveries from Keeper bot format
+        
+        Keeper bot exports discoveries as a list with associated metadata.
+        Converts Keeper format to database schema format.
+        """
+        print(f"Detected Keeper discoveries format")
+        
+        if not self.use_database:
+            print(f"⚠️  Keeper discoveries require database backend")
+            return False
+        
+        try:
+            from src.common.database import HavenDatabase
+            
+            discoveries_list = data.get('discoveries', [])
+            if not discoveries_list:
+                print(f"⚠️  No discoveries found in {file_path.name}")
+                return True
+            
+            print(f"✓ Found {len(discoveries_list)} discoveries to import")
+            
+            imported_count = 0
+            failed_count = 0
+            
+            with HavenDatabase(str(DATABASE_PATH)) as db:
+                for idx, disc_data in enumerate(discoveries_list):
+                    if not isinstance(disc_data, dict):
+                        continue
+                    
+                    try:
+                        # Convert Keeper format to database schema
+                        converted = self._convert_keeper_discovery(disc_data, db)
+                        
+                        # Add to database
+                        db.add_discovery(converted)
+                        imported_count += 1
+                        
+                    except Exception as e:
+                        print(f"  ❌ Discovery {idx+1} failed: {str(e)[:100]}")
+                        logging.error(f"Failed to import discovery {idx+1}: {e}", exc_info=True)
+                        failed_count += 1
+            
+            print(f"✓ Keeper discoveries imported: {imported_count}")
+            if failed_count > 0:
+                print(f"⚠️  Failed: {failed_count}")
+            
+            self.stats.systems_imported += imported_count
+            return True
+            
+        except Exception as e:
+            print(f"❌ ERROR importing Keeper discoveries: {e}")
+            self.stats.errors.append(f"{file_path.name}: Keeper import failed - {e}")
+            return False
+
+    def _convert_keeper_discovery(self, keeper_disc: dict, db) -> dict:
+        """
+        Convert Keeper bot discovery format to Haven database format
+        
+        Maps:
+        - keeper fields → database fields
+        - Lists → JSON strings
+        - None → appropriate defaults
+        - Finds planet_id from planet_name
+        """
+        import json
+        
+        converted = {}
+        
+        # Required fields
+        converted['discovery_type'] = keeper_disc.get('type', '').strip() or 'unknown'
+        converted['description'] = keeper_disc.get('description', '').strip() or 'No description'
+        converted['location_type'] = 'planet'  # Keeper bot discoveries are planet-based
+        
+        # Map discovery name
+        converted['discovery_name'] = keeper_disc.get('location', '').strip() or None
+        
+        # Location info
+        converted['location_name'] = keeper_disc.get('location', '').strip() or None
+        
+        # System info
+        system_name = keeper_disc.get('system_name', '').strip()
+        if system_name:
+            # Find system by name
+            try:
+                cursor = db.conn.cursor()
+                cursor.execute("SELECT id FROM systems WHERE name = ?", (system_name,))
+                sys_row = cursor.fetchone()
+                if sys_row:
+                    converted['system_id'] = sys_row[0]
+            except:
+                pass
+        
+        # Planet info
+        planet_name = keeper_disc.get('planet_name', '').strip()
+        if planet_name and 'system_id' in converted:
+            # Find planet by name in this system
+            try:
+                cursor = db.conn.cursor()
+                cursor.execute(
+                    "SELECT id FROM planets WHERE system_id = ? AND name = ?",
+                    (converted['system_id'], planet_name)
+                )
+                planet_row = cursor.fetchone()
+                if planet_row:
+                    converted['planet_id'] = planet_row[0]
+            except:
+                pass
+        
+        # Optional fields with type conversion
+        converted['coordinates'] = keeper_disc.get('coordinates', '').strip() or None
+        converted['condition'] = keeper_disc.get('condition', '').strip() or None
+        converted['time_period'] = keeper_disc.get('time_period', '').strip() or None
+        converted['significance'] = keeper_disc.get('significance', '').strip() or None
+        converted['photo_url'] = keeper_disc.get('evidence_url', '').strip() or None
+        
+        # User info
+        converted['discovered_by'] = keeper_disc.get('username', '').strip() or None
+        converted['discord_user_id'] = str(keeper_disc.get('user_id', '')).strip() or None
+        converted['discord_guild_id'] = str(keeper_disc.get('guild_id', '')).strip() or None
+        
+        # Convert lists to JSON strings for database storage
+        # Tags: list → JSON string
+        tags = keeper_disc.get('tags', [])
+        if isinstance(tags, list) and tags:
+            converted['tags'] = json.dumps(tags)
+        else:
+            converted['tags'] = None
+        
+        # Metadata: dict/list → JSON string
+        metadata = keeper_disc.get('metadata', {})
+        if isinstance(metadata, (dict, list)) and metadata:
+            converted['metadata'] = json.dumps(metadata)
+        else:
+            converted['metadata'] = None
+        
+        # Status fields
+        converted['analysis_status'] = keeper_disc.get('analysis_status', '').strip() or 'pending'
+        converted['pattern_matches'] = keeper_disc.get('pattern_matches', 0)
+        converted['mystery_tier'] = keeper_disc.get('mystery_tier', 0)
+        
+        # Submission timestamp
+        converted['submission_timestamp'] = keeper_disc.get('submission_timestamp') or None
+        
+        return converted
+
     def import_file(self, file_path: Path, allow_updates: bool = False,
                    skip_validation: bool = False) -> bool:
         """
@@ -155,12 +327,16 @@ class JSONImporter:
             self.stats.errors.append(f"{file_path.name}: Failed to load - {e}")
             return False
 
-        # Validate
+        # Check if this is Keeper bot discoveries format
+        if self._is_keeper_format(data):
+            return self._import_keeper_discoveries(data, file_path)
+
+        # Validate standard format
         if not skip_validation:
             if not self._validate_data(data, file_path.name):
                 return False
 
-        # Import systems
+        # Import systems (standard format)
         for key, value in data.items():
             if key == "_meta" or not isinstance(value, dict):
                 continue
