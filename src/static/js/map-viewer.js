@@ -1280,6 +1280,17 @@ renderer.domElement.addEventListener('click', (e) => {
         html += `</ul>`;
     }
 
+    // For planet detail, show discoveries button if any exist for this planet
+    if (ud.type === 'planet' && window.DISCOVERIES_DATA && window.DISCOVERIES_DATA.length > 0) {
+        const planetDiscoveries = window.DISCOVERIES_DATA.filter(d => 
+            d.planet_id === data.id || (d.discovery_name === data.name && d.system_id)
+        );
+        
+        if (planetDiscoveries.length > 0) {
+            html += `<p style="margin-top: 12px;"><button id="view-discoveries-btn" style="background: #00CED1; color: #000; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-weight: bold;">📍 View ${planetDiscoveries.length} Discover${planetDiscoveries.length !== 1 ? 'ies' : 'y'}</button></p>`;
+        }
+    }
+
     // Show photo if available
     if (data.photo) {
         const href = resolvePhotoHref(data.photo);
@@ -1289,6 +1300,45 @@ renderer.domElement.addEventListener('click', (e) => {
     }
     
     document.getElementById('info-content').innerHTML = html;
+    
+    // Attach click handler to discoveries button if it exists
+    const discBtn = document.getElementById('view-discoveries-btn');
+    if (discBtn) {
+        discBtn.addEventListener('click', () => {
+            // Filter and display discoveries for this planet
+            const planetDiscoveries = window.DISCOVERIES_DATA.filter(d => 
+                d.planet_id === data.id || (d.discovery_name === data.name && d.system_id)
+            );
+            
+            if (planetDiscoveries.length > 0) {
+                let discoveryHtml = `<h3>🔍 Discoveries on ${data.name}</h3>`;
+                planetDiscoveries.forEach((disc, idx) => {
+                    discoveryHtml += `<div style="border-left: 3px solid #00CED1; padding-left: 10px; margin: 10px 0; padding-bottom: 10px;">`;
+                    discoveryHtml += `<p><strong>${idx + 1}. ${disc.discovery_type}</strong></p>`;
+                    if (disc.description) discoveryHtml += `<p>${disc.description}</p>`;
+                    if (disc.discovered_by) discoveryHtml += `<p><small>Discovered by: ${disc.discovered_by}</small></p>`;
+                    if (disc.submission_timestamp) {
+                        const date = new Date(disc.submission_timestamp);
+                        discoveryHtml += `<p><small>Date: ${date.toLocaleDateString()}</small></p>`;
+                    }
+                    discoveryHtml += `</div>`;
+                });
+                discoveryHtml += `<p><button id="back-to-planet-btn" style="background: #888; color: #fff; border: none; padding: 6px 10px; border-radius: 3px; cursor: pointer; margin-top: 10px;">← Back</button></p>`;
+                
+                const contentDiv = document.getElementById('info-content');
+                const originalHtml = contentDiv.innerHTML;
+                contentDiv.innerHTML = discoveryHtml;
+                
+                // Back button restores planet view
+                const backBtn = document.getElementById('back-to-planet-btn');
+                if (backBtn) {
+                    backBtn.addEventListener('click', () => {
+                        contentDiv.innerHTML = originalHtml;
+                    });
+                }
+            }
+        });
+    }
 }
 
 // Keyboard navigation

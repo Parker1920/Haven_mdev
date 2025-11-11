@@ -42,10 +42,16 @@ class HavenDatabase:
 
     def __enter__(self):
         """Context manager entry - opens database connection"""
-        self.conn = sqlite3.connect(str(self.db_path))
+        # Add timeout to handle locked database (imports while Control Room running)
+        self.conn = sqlite3.connect(str(self.db_path), timeout=10.0)
         self.conn.row_factory = sqlite3.Row  # Return dict-like rows
         # Enable foreign keys for referential integrity
         self.conn.execute("PRAGMA foreign_keys = ON")
+        # Use WAL mode for better concurrency
+        try:
+            self.conn.execute("PRAGMA journal_mode=WAL")
+        except:
+            pass  # WAL mode might already be set
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):

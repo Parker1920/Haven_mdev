@@ -24,6 +24,7 @@ Usage:
 import json
 import sys
 import logging
+import sqlite3
 from pathlib import Path
 from datetime import datetime
 import argparse
@@ -168,6 +169,7 @@ class JSONImporter:
         
         try:
             from src.common.database import HavenDatabase
+            import time
             
             discoveries_list = data.get('discoveries', [])
             if not discoveries_list:
@@ -179,24 +181,48 @@ class JSONImporter:
             imported_count = 0
             failed_count = 0
             
-            with HavenDatabase(str(DATABASE_PATH)) as db:
-                for idx, disc_data in enumerate(discoveries_list):
-                    if not isinstance(disc_data, dict):
-                        continue
-                    
-                    try:
-                        # Convert Keeper format to database schema
-                        converted = self._convert_keeper_discovery(disc_data, db)
-                        
-                        # Add to database
-                        db.add_discovery(converted)
-                        imported_count += 1
-                        
-                    except Exception as e:
-                        print(f"  ❌ Discovery {idx+1} failed: {str(e)[:100]}")
-                        logging.error(f"Failed to import discovery {idx+1}: {e}", exc_info=True)
-                        failed_count += 1
+            # Retry logic for database locks (Control Room might be using it)
+            max_retries = 3
+            retry_count = 0
             
+            while retry_count < max_retries:
+                try:
+                    with HavenDatabase(str(DATABASE_PATH)) as db:
+                        for idx, disc_data in enumerate(discoveries_list):
+                            if not isinstance(disc_data, dict):
+                                continue
+                            
+                            try:
+                                # Convert Keeper format to database schema
+                                converted = self._convert_keeper_discovery(disc_data, db)
+                                
+                                # Add to database
+                                db.add_discovery(converted)
+                                imported_count += 1
+                                
+                            except Exception as e:
+                                print(f"  ❌ Discovery {idx+1} failed: {str(e)[:100]}")
+                                logging.error(f"Failed to import discovery {idx+1}: {e}", exc_info=True)
+                                failed_count += 1
+                    
+                    # Success - break out of retry loop
+                    break
+                    
+                except sqlite3.OperationalError as e:
+                    if "locked" in str(e).lower():
+                        retry_count += 1
+                        if retry_count < max_retries:
+                            wait_time = 2 ** retry_count  # Exponential backoff: 2s, 4s, 8s
+                            print(f"⚠️  Database locked, retrying in {wait_time}s... ({retry_count}/{max_retries})")
+                            time.sleep(wait_time)
+                        else:
+                            print(f"❌ Database remains locked after {max_retries} retries")
+                            print(f"   Ensure Control Room is not running during import")
+                            self.stats.errors.append(f"{file_path.name}: Database locked - close Control Room and retry")
+                            return False
+                    else:
+                        raise
+                        
             print(f"✓ Keeper discoveries imported: {imported_count}")
             if failed_count > 0:
                 print(f"⚠️  Failed: {failed_count}")
@@ -223,39 +249,44 @@ class JSONImporter:
         
         converted = {}
         
-        # Required fields
-        converted['discovery_type'] = keeper_disc.get('type', '').strip() or 'unknown'
-        converted['description'] = keeper_disc.get('description', '').strip() or 'No description'
+        # Required fields - handle None values
+        disc_type = keeper_disc.get('type')
+        converted['discovery_type'] = (disc_type.strip() if disc_type else 'unknown') or 'unknown'
+        
+        desc = keeper_disc.get('description')
+        converted['description'] = (desc.strip() if desc else 'No description') or 'No description'
+        
         converted['location_type'] = 'planet'  # Keeper bot discoveries are planet-based
         
-        # Map discovery name
-        converted['discovery_name'] = keeper_disc.get('location', '').strip() or None
+        # Map discovery name - handle None
+        location = keeper_disc.get('location')
+        converted['discovery_name'] = (location.strip() if location else None)
         
-        # Location info
-        converted['location_name'] = keeper_disc.get('location', '').strip() or None
+        # Location info - handle None
+        converted['location_name'] = (location.strip() if location else None)
         
-        # System info
-        system_name = keeper_disc.get('system_name', '').strip()
+        # System info - handle None
+        system_name = keeper_disc.get('system_name')
         if system_name:
             # Find system by name
             try:
                 cursor = db.conn.cursor()
-                cursor.execute("SELECT id FROM systems WHERE name = ?", (system_name,))
+                cursor.execute("SELECT id FROM systems WHERE name = ?", (system_name.strip() if isinstance(system_name, str) else system_name,))
                 sys_row = cursor.fetchone()
                 if sys_row:
                     converted['system_id'] = sys_row[0]
             except:
                 pass
         
-        # Planet info
-        planet_name = keeper_disc.get('planet_name', '').strip()
+        # Planet info - handle None
+        planet_name = keeper_disc.get('planet_name')
         if planet_name and 'system_id' in converted:
             # Find planet by name in this system
             try:
                 cursor = db.conn.cursor()
                 cursor.execute(
                     "SELECT id FROM planets WHERE system_id = ? AND name = ?",
-                    (converted['system_id'], planet_name)
+                    (converted['system_id'], planet_name.strip() if isinstance(planet_name, str) else planet_name)
                 )
                 planet_row = cursor.fetchone()
                 if planet_row:
@@ -263,17 +294,31 @@ class JSONImporter:
             except:
                 pass
         
-        # Optional fields with type conversion
-        converted['coordinates'] = keeper_disc.get('coordinates', '').strip() or None
-        converted['condition'] = keeper_disc.get('condition', '').strip() or None
-        converted['time_period'] = keeper_disc.get('time_period', '').strip() or None
-        converted['significance'] = keeper_disc.get('significance', '').strip() or None
-        converted['photo_url'] = keeper_disc.get('evidence_url', '').strip() or None
+        # Optional fields with None-safe type conversion
+        coords = keeper_disc.get('coordinates')
+        converted['coordinates'] = (coords.strip() if coords else None)
         
-        # User info
-        converted['discovered_by'] = keeper_disc.get('username', '').strip() or None
-        converted['discord_user_id'] = str(keeper_disc.get('user_id', '')).strip() or None
-        converted['discord_guild_id'] = str(keeper_disc.get('guild_id', '')).strip() or None
+        cond = keeper_disc.get('condition')
+        converted['condition'] = (cond.strip() if cond else None)
+        
+        time_p = keeper_disc.get('time_period')
+        converted['time_period'] = (time_p.strip() if time_p else None)
+        
+        sig = keeper_disc.get('significance')
+        converted['significance'] = (sig.strip() if sig else None)
+        
+        evidence = keeper_disc.get('evidence_url')
+        converted['photo_url'] = (evidence.strip() if evidence else None)
+        
+        # User info - handle None
+        username = keeper_disc.get('username')
+        converted['discovered_by'] = (username.strip() if username else None)
+        
+        user_id = keeper_disc.get('user_id')
+        converted['discord_user_id'] = (str(user_id).strip() if user_id else None)
+        
+        guild_id = keeper_disc.get('guild_id')
+        converted['discord_guild_id'] = (str(guild_id).strip() if guild_id else None)
         
         # Convert lists to JSON strings for database storage
         # Tags: list → JSON string
@@ -290,10 +335,15 @@ class JSONImporter:
         else:
             converted['metadata'] = None
         
-        # Status fields
-        converted['analysis_status'] = keeper_disc.get('analysis_status', '').strip() or 'pending'
-        converted['pattern_matches'] = keeper_disc.get('pattern_matches', 0)
-        converted['mystery_tier'] = keeper_disc.get('mystery_tier', 0)
+        # Status fields - handle None
+        analysis = keeper_disc.get('analysis_status')
+        converted['analysis_status'] = (analysis.strip() if analysis else 'pending') or 'pending'
+        
+        pattern = keeper_disc.get('pattern_matches')
+        converted['pattern_matches'] = pattern if isinstance(pattern, int) else 0
+        
+        mystery = keeper_disc.get('mystery_tier')
+        converted['mystery_tier'] = mystery if isinstance(mystery, int) else 0
         
         # Submission timestamp
         converted['submission_timestamp'] = keeper_disc.get('submission_timestamp') or None
