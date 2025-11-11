@@ -1177,10 +1177,8 @@ between JSON and database backends.
                         result_text.insert("end", f"Updated: {importer.stats.systems_updated}\n")
                         result_text.insert("end", f"Skipped: {importer.stats.systems_skipped}\n")
                         result_text.insert("end", f"Failed: {importer.stats.systems_failed}\n")
-                        
-                        # Refresh UI if we have a data provider
-                        if self.data_provider:
-                            self._refresh_backend_info()
+                        result_text.insert("end", f"\n📝 Note: Restart Control Room to see imported data in the UI.\n")
+                        logging.info(f"Import completed: {importer.stats.systems_imported} imported, {importer.stats.systems_skipped} skipped")
                     else:
                         result_text.insert("end", "\n\n❌ IMPORT FAILED\n")
                         result_text.insert("end", f"Check errors above for details.\n")

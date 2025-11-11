@@ -695,6 +695,127 @@ if (VIEW_MODE === 'system' && typeof MoonRenderer !== 'undefined') {
     console.warn('[MOON] MoonRenderer class not available - moon visualization disabled');
 }
 
+// ========== Discovery Visualization ==========
+// Render discoveries as special markers on the map
+if (window.DISCOVERIES_DATA && window.DISCOVERIES_DATA.length > 0) {
+    console.log(`[DISCOVERY] Rendering ${window.DISCOVERIES_DATA.length} discoveries...`);
+    
+    // Discovery icon colors by type
+    const discoveryColors = {
+        'bones': 0xd4a574,           // tan/bone color
+        'logs': 0x00ff88,            // green
+        'ruins': 0xffa500,           // orange
+        'tech': 0x00d9ff,            // cyan
+        'flora': 0x00ff00,           // lime green
+        'fauna': 0xff69b4,           // hot pink
+        'text': 0xffff00,           // yellow
+        'energy': 0xff0000,          // red
+        'signal': 0x8f00ff,          // purple
+        'structure': 0xc0c0c0,       // silver
+        'default': 0x888888          // gray
+    };
+    
+    // Try to get system data for geocoding discoveries
+    const systemMap = new Map();
+    if (Array.isArray(SYSTEM_DATA)) {
+        SYSTEM_DATA.forEach(item => {
+            if (item.type === 'system' || (item.type === 'planet' && item.x !== undefined)) {
+                const key = item.data && item.data.id ? item.data.id : item.id;
+                if (key) {
+                    systemMap.set(key, item);
+                }
+            }
+        });
+    }
+    
+    window.DISCOVERIES_DATA.forEach(discovery => {
+        try {
+            // Try to find system coordinates for this discovery
+            let x, y, z;
+            
+            if (discovery.system_id && systemMap.has(discovery.system_id)) {
+                const system = systemMap.get(discovery.system_id);
+                x = system.x || 0;
+                y = system.y || 0;
+                z = system.z || 0;
+            } else if (discovery.x !== undefined && discovery.y !== undefined && discovery.z !== undefined) {
+                // Discovery has its own coordinates
+                x = discovery.x;
+                y = discovery.y;
+                z = discovery.z;
+            } else {
+                // Skip if we can't locate the discovery
+                console.warn('[DISCOVERY] Could not locate discovery:', discovery);
+                return;
+            }
+            
+            // Add slight offset so discovery doesn't overlap with system
+            x += (Math.random() - 0.5) * 0.5;
+            y += (Math.random() - 0.5) * 0.5;
+            z += (Math.random() - 0.5) * 0.5;
+            
+            // Create discovery marker (small pyramid/star shape)
+            const discoveryType = (discovery.discovery_type || 'default').toLowerCase();
+            const color = discoveryColors[discoveryType] || discoveryColors['default'];
+            
+            const geometry = new THREE.TetrahedronGeometry(0.15, 0);
+            const material = new THREE.MeshPhongMaterial({
+                color: color,
+                transparent: true,
+                opacity: 0.85,
+                emissive: color,
+                emissiveIntensity: 0.4,
+                shininess: 100
+            });
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.position.set(x, y, z);
+            
+            // Rotate for better visibility
+            mesh.rotation.z = Math.random() * Math.PI;
+            
+            // Store discovery data for interaction
+            mesh.userData = {
+                type: 'discovery',
+                name: discovery.discovery_type || 'Unknown Discovery',
+                data: discovery,
+                discovery_id: discovery.id,
+                discovery_type: discovery.discovery_type,
+                system_id: discovery.system_id
+            };
+            
+            // Add glow effect
+            const outlineGeometry = new THREE.TetrahedronGeometry(0.18, 0);
+            const outlineMaterial = new THREE.MeshBasicMaterial({
+                color: color,
+                transparent: true,
+                opacity: 0.3,
+                side: THREE.BackSide
+            });
+            const outline = new THREE.Mesh(outlineGeometry, outlineMaterial);
+            mesh.add(outline);
+            
+            // Add larger hit radius for easier interaction
+            const hitGeo = new THREE.SphereGeometry(0.35, 8, 8);
+            const hitMat = new THREE.MeshBasicMaterial({ visible: false });
+            const hitMesh = new THREE.Mesh(hitGeo, hitMat);
+            hitMesh.userData = { ...mesh.userData, target: mesh };
+            mesh.add(hitMesh);
+            
+            scene.add(mesh);
+            objects.push(mesh);
+            objects.push(hitMesh);
+            
+            console.log(`[DISCOVERY] Added ${discovery.discovery_type} discovery at (${x.toFixed(2)}, ${y.toFixed(2)}, ${z.toFixed(2)})`);
+        } catch (e) {
+            console.error('[DISCOVERY] Failed to render discovery:', discovery, e);
+        }
+    });
+    
+    console.log(`[DISCOVERY] Successfully rendered discoveries`);
+} else {
+    console.log('[DISCOVERY] No discoveries to display');
+}
+
 // Build region centroid meshes (galaxy view) - disabled unless explicitly enabled
 function buildRegionsFromSystems() {
     const map = new Map();
@@ -1069,7 +1190,30 @@ renderer.domElement.addEventListener('click', (e) => {
     if (ud.type === 'sun') heading = 'System Details';
     else if (ud.type === 'planet') heading = 'Planet Details';
     else if (ud.type === 'moon') heading = 'Moon Details';
+    else if (ud.type === 'discovery') heading = '🔍 Discovery';
     let html = `<h3>${heading}</h3>`;
+
+    // Discovery info panel
+    if (ud.type === 'discovery') {
+        const d = data || {};
+        html += `<p><strong>Type:</strong> ${d.discovery_type || 'Unknown'}</p>`;
+        if (d.description) html += `<p><strong>Description:</strong> ${d.description}</p>`;
+        if (d.submission_timestamp) {
+            const date = new Date(d.submission_timestamp);
+            html += `<p><strong>Discovered:</strong> ${date.toLocaleDateString()}</p>`;
+        }
+        if (d.username) html += `<p><strong>Explorer:</strong> ${d.username}</p>`;
+        if (d.location_type) html += `<p><strong>Location Type:</strong> ${d.location_type}</p>`;
+        if (d.location_name) html += `<p><strong>Location Name:</strong> ${d.location_name}</p>`;
+        if (d.condition) html += `<p><strong>Condition:</strong> ${d.condition}</p>`;
+        if (d.significance) html += `<p><strong>Significance:</strong> ${d.significance}</p>`;
+        if (d.mystery_tier && d.mystery_tier > 0) {
+            const tiers = ['', 'Surface Anomaly', 'Deep Mystery', 'Cosmic Enigma', 'Cosmic Significance'];
+            html += `<p><strong>Mystery Tier:</strong> ${tiers[d.mystery_tier] || 'Unknown'}</p>`;
+        }
+        document.getElementById('info-content').innerHTML = html;
+        return;
+    }
 
     // System center (sun) shows system meta
     if (ud.type === 'sun' && SYSTEM_META) {

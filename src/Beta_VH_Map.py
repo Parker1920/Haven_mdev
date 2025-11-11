@@ -358,6 +358,38 @@ def copy_static_files(output_dir: Path) -> None:
             logging.error(f"Fallback copy also failed: {e2}")
 
 
+def load_discoveries() -> List[Dict]:
+    """
+    Load discoveries from the database.
+    
+    Returns:
+        List of discovery dictionaries, empty list if none found or database unavailable
+    """
+    try:
+        if USE_DATABASE:
+            try:
+                provider = get_data_provider()
+                # The provider should have access to get_discoveries through the database
+                # For now, we'll access the database directly if available
+                from src.common.database import HavenDatabase
+                db_path = str(Path(__file__).parent.parent / 'data' / 'VH-Database.db')
+                
+                with HavenDatabase(db_path) as db:
+                    # Get all discoveries (no filter)
+                    discoveries = db.get_discoveries(limit=10000)
+                    logging.info(f"Loaded {len(discoveries)} discoveries from database")
+                    return discoveries
+            except Exception as e:
+                logging.warning(f"Failed to load discoveries from database: {e}")
+                return []
+        else:
+            logging.debug("Database disabled, no discoveries will be shown")
+            return []
+    except Exception as e:
+        logging.error(f"Error loading discoveries: {e}")
+        return []
+
+
 # Old embedded template removed - now using external files
 
 
@@ -546,6 +578,7 @@ def write_galaxy_and_system_views(df: pd.DataFrame, output: Path):
     """Generate Galaxy Overview (one point per system) and System View for each system.
 
     This function now uses external template files and copies static assets.
+    Also includes discoveries from the database if available.
     """
     # Load the HTML template from external file
     template = load_template()
@@ -553,12 +586,17 @@ def write_galaxy_and_system_views(df: pd.DataFrame, output: Path):
     # Copy static files (CSS, JS) to the output directory
     copy_static_files(output.parent)
 
+    # Load discoveries from database
+    discoveries_data = load_discoveries()
+    logging.info(f"Including {len(discoveries_data)} discoveries in map generation")
+
     # Galaxy overview
     galaxy_data = prepare_galaxy_systems_data(df)
     html = template.replace("{{SYSTEMS_DATA}}", json.dumps(galaxy_data, indent=2))
     html = html.replace("{{VIEW_MODE}}", "galaxy")
     html = html.replace("{{REGION_NAME}}", "")
     html = html.replace("{{SYSTEM_META}}", json.dumps({}, indent=2))
+    html = html.replace("{{DISCOVERIES_DATA}}", json.dumps(discoveries_data, indent=2))
     output.write_text(html, encoding="utf-8")
     logging.info(f"Wrote Galaxy Overview: {output}")
 
@@ -580,10 +618,14 @@ def write_galaxy_and_system_views(df: pd.DataFrame, output: Path):
             "z": row.get("z"),
         }
 
+        # Filter discoveries for this system
+        system_discoveries = [d for d in discoveries_data if d.get('system_id') == row.get('id')]
+
         html = template.replace("{{SYSTEMS_DATA}}", json.dumps(solar, indent=2))
         html = html.replace("{{VIEW_MODE}}", "system")
         html = html.replace("{{REGION_NAME}}", system_name)
         html = html.replace("{{SYSTEM_META}}", json.dumps(meta, indent=2))
+        html = html.replace("{{DISCOVERIES_DATA}}", json.dumps(system_discoveries, indent=2))
         system_file.write_text(html, encoding="utf-8")
         logging.info(f"Wrote System View for {system_name}: {system_file.name}")
 

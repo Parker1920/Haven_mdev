@@ -23,6 +23,7 @@ Usage:
 """
 import json
 import sys
+import logging
 from pathlib import Path
 from datetime import datetime
 import argparse
@@ -259,6 +260,74 @@ class JSONImporter:
 
         return True
 
+    def _extract_and_import_discoveries(self, system_id: str, system_data: dict):
+        """
+        Extract discoveries from system data and import them to database
+        
+        Discoveries can be nested under planets or at system level.
+        Format from Keeper bot:
+        - discoveries: [{...}, {...}] at system level, or
+        - discoveries: [{...}] under each planet
+        
+        Args:
+            system_id: ID of the system being imported
+            system_data: System data dictionary
+        """
+        if not self.use_database:
+            return  # Only import discoveries to database
+        
+        try:
+            # Get database connection
+            from src.common.database import HavenDatabase
+            
+            with HavenDatabase(str(DATABASE_PATH)) as db:
+                # Check for system-level discoveries
+                system_discoveries = system_data.get('discoveries', [])
+                if system_discoveries and isinstance(system_discoveries, list):
+                    for disc_data in system_discoveries:
+                        if not isinstance(disc_data, dict):
+                            continue
+                        # Ensure system_id is set
+                        disc_data['system_id'] = system_id
+                        try:
+                            db.add_discovery(disc_data)
+                        except Exception as e:
+                            logging.warning(f"Failed to import system-level discovery: {e}")
+                
+                # Check for discoveries under planets
+                planets = system_data.get('planets', [])
+                for planet in planets:
+                    if not isinstance(planet, dict):
+                        continue
+                    
+                    planet_name = planet.get('name')
+                    planet_discoveries = planet.get('discoveries', [])
+                    
+                    if planet_discoveries and isinstance(planet_discoveries, list):
+                        # Get planet ID from database
+                        cursor = db.conn.cursor()
+                        cursor.execute(
+                            "SELECT id FROM planets WHERE system_id = ? AND name = ?",
+                            (system_id, planet_name)
+                        )
+                        planet_row = cursor.fetchone()
+                        
+                        if planet_row:
+                            planet_id = planet_row[0]
+                            for disc_data in planet_discoveries:
+                                if not isinstance(disc_data, dict):
+                                    continue
+                                # Set both system and planet IDs
+                                disc_data['system_id'] = system_id
+                                disc_data['planet_id'] = planet_id
+                                try:
+                                    db.add_discovery(disc_data)
+                                except Exception as e:
+                                    logging.warning(f"Failed to import discovery for {planet_name}: {e}")
+                
+        except Exception as e:
+            logging.error(f"Error importing discoveries for system {system_id}: {e}")
+
     def _import_system(self, key: str, system_data: dict, allow_updates: bool):
         """
         Import single system
@@ -291,24 +360,33 @@ class JSONImporter:
             else:
                 # Import new system
                 system_copy = dict(normalized_data)
+                system_id = None
                 
                 # Handle ID: check if it conflicts with existing IDs
                 if 'id' in system_copy:
+                    system_id = system_copy['id']
                     # Check if this ID already exists in the database
                     try:
                         # Try to add with the existing ID
-                        self.provider.add_system(system_copy)
+                        returned_id = self.provider.add_system(system_copy)
+                        system_id = returned_id  # Use the returned ID
                     except Exception as id_error:
                         # If it's a UNIQUE constraint error on ID, generate a new one
                         if "UNIQUE constraint failed" in str(id_error) or "UNIQUE" in str(id_error):
                             print(f"    ⚠ Warning: System ID conflict, generating new ID")
                             del system_copy['id']
-                            self.provider.add_system(system_copy)
+                            returned_id = self.provider.add_system(system_copy)
+                            system_id = returned_id
                         else:
                             raise  # Re-raise if it's a different error
                 else:
                     # No ID provided, let provider generate one
-                    self.provider.add_system(system_copy)
+                    returned_id = self.provider.add_system(system_copy)
+                    system_id = returned_id
+                
+                # After system is added, import any discoveries
+                if system_id:
+                    self._extract_and_import_discoveries(system_id, system_data)
                 
                 self.stats.systems_imported += 1
                 print(f"  + Imported: {system_name}")
