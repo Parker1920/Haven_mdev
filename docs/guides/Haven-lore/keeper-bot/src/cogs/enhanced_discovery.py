@@ -74,6 +74,9 @@ class HavenLocationSelect(discord.ui.Select):
     async def callback(self, interaction: discord.Interaction):
         """Handle location selection."""
         selected_location = self.values[0]
+        import logging
+        logger = logging.getLogger('keeper.enhanced_discovery')
+        logger.info(f"HavenLocationSelect.callback: selected_location='{selected_location}' for system '{self.system_name}'")
         await self.callback_handler.handle_location_selection(interaction, self.system_name, selected_location)
 
 # DEPRECATED: Generic modal replaced with type-specific modals in discovery_modals.py
@@ -130,19 +133,36 @@ class DiscoveryFlowHandler:
     
     async def handle_location_selection(self, interaction: discord.Interaction, system_name: str, location_info: str):
         """Handle when user selects a specific location."""
-        # This is where we determine the discovery type
-        # For now, we'll use a simple type selector
-        # In Phase 3, this could be enhanced with context-aware suggestions
-        
+        import logging
+        logger = logging.getLogger('keeper.enhanced_discovery')
+        logger.info(f"handle_location_selection: location_info='{location_info}', system_name='{system_name}'")
+
+        # Validate location_info
+        if not location_info:
+            logger.error("handle_location_selection: location_info is empty/None!")
+            await interaction.response.send_message(
+                "❌ Error: No location selected. Please try again.",
+                ephemeral=True
+            )
+            return
+
+        # Parse location for display
+        try:
+            location_display = location_info.split(':')[-1]
+        except:
+            location_display = "Unknown"
+
+        logger.info(f"handle_location_selection: Creating DiscoveryTypeSelect with location_info='{location_info}'")
+
         embed = discord.Embed(
             title="🔍 Discovery Type Selection",
-            description=f"*Location confirmed: {location_info.split(':')[-1]} in {system_name}*\n\nWhat type of discovery did you make?",
+            description=f"*Location confirmed: {location_display} in {system_name}*\n\nWhat type of discovery did you make?",
             color=self.config['theme']['embed_colors']['discovery']
         )
-        
+
         view = discord.ui.View(timeout=300)
         view.add_item(DiscoveryTypeSelect(self.config, system_name, location_info))
-        
+
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
 class DiscoveryTypeSelect(discord.ui.Select):
@@ -174,13 +194,18 @@ class DiscoveryTypeSelect(discord.ui.Select):
         """Handle discovery type selection."""
         discovery_type = self.values[0]
         discovery_name = self.config['discovery_types'][discovery_type]
-        
+
+        import logging
+        logger = logging.getLogger('keeper.enhanced_discovery')
+        logger.info(f"DiscoveryTypeSelect.callback: discovery_type='{discovery_type}', system='{self.system_name}', location_info='{self.location_info}'")
+
         # Get Haven system data for context
         bot = interaction.client
         cog = bot.get_cog('EnhancedDiscoverySystem')
         haven_data = cog.haven.get_system(self.system_name)
 
         # Show the type-specific discovery modal
+        logger.info(f"DiscoveryTypeSelect.callback: Creating modal with location_info='{self.location_info}'")
         modal = get_modal_for_type(discovery_type, self.system_name, self.location_info, self.config, haven_data)
         await interaction.response.send_modal(modal)
 
@@ -294,6 +319,7 @@ class EnhancedDiscoverySystem(commands.Cog):
                 'evidence_url': discovery_data.get('evidence_url', ''),
                 'haven_data': discovery_data.get('haven_data'),
                 'location_type': discovery_data.get('location_type'),
+                'location_name': discovery_data.get('location_name'),  # CRITICAL: Must pass location_name for planet_id resolution
                 'location_info': discovery_data.get('location_info'),
                 # Type-specific fields (will be None if not applicable)
                 'species_type': discovery_data.get('species_type'),

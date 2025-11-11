@@ -280,7 +280,17 @@ class PlanetMoonEditor(ctk.CTkToplevel):
         env_card.pack(fill="x", pady=(0, 15))
         env_grid = ctk.CTkFrame(env_card, fg_color="transparent")
         env_grid.pack(padx=20, pady=(0, 20), fill="x")
-        
+
+        # Planet Type dropdown
+        type_row = ctk.CTkFrame(env_grid, fg_color="transparent")
+        type_row.pack(fill="x", pady=(0, 10))
+        ctk.CTkLabel(type_row, text="Planet Type", text_color=COLORS['text_secondary']).pack(anchor="w")
+        self.type_var = ctk.StringVar(value="N/A")
+        self.type_menu = ctk.CTkOptionMenu(type_row, values=["N/A", "Lush", "Desert", "Frozen", "Toxic", "Radioactive", "Scorched", "Barren", "Exotic", "Dead"],
+                                           variable=self.type_var, fg_color=COLORS['bg_card'],
+                                           button_color=COLORS['accent_cyan'])
+        self.type_menu.pack(fill="x")
+
         sent_row = ctk.CTkFrame(env_grid, fg_color="transparent")
         sent_row.pack(fill="x", pady=(0, 10))
         ctk.CTkLabel(sent_row, text="Sentinel Level", text_color=COLORS['text_secondary']).pack(anchor="w")
@@ -289,21 +299,21 @@ class PlanetMoonEditor(ctk.CTkToplevel):
                                                variable=self.sentinel_var, fg_color=COLORS['bg_card'],
                                                button_color=COLORS['accent_cyan'])
         self.sentinel_menu.pack(fill="x")
-        
+
         fauna_row = ctk.CTkFrame(env_grid, fg_color="transparent")
         fauna_row.pack(fill="x", pady=(0, 10))
         ctk.CTkLabel(fauna_row, text="Fauna", text_color=COLORS['text_secondary']).pack(anchor="w")
         self.fauna_var = ctk.StringVar(value="N/A")
-        self.fauna_menu = ctk.CTkOptionMenu(fauna_row, values=["N/A", "None", "Low", "Mid", "High", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10"],
+        self.fauna_menu = ctk.CTkOptionMenu(fauna_row, values=["N/A", "None", "Low", "Medium", "High", "Full"],
                                             variable=self.fauna_var, fg_color=COLORS['bg_card'],
                                             button_color=COLORS['accent_cyan'])
         self.fauna_menu.pack(fill="x")
-        
+
         flora_row = ctk.CTkFrame(env_grid, fg_color="transparent")
         flora_row.pack(fill="x", pady=(0, 10))
         ctk.CTkLabel(flora_row, text="Flora", text_color=COLORS['text_secondary']).pack(anchor="w")
         self.flora_var = ctk.StringVar(value="N/A")
-        self.flora_menu = ctk.CTkOptionMenu(flora_row, values=["N/A", "None", "Low", "Mid", "High"],
+        self.flora_menu = ctk.CTkOptionMenu(flora_row, values=["N/A", "None", "Low", "Medium", "High", "Full"],
                                             variable=self.flora_var, fg_color=COLORS['bg_card'],
                                             button_color=COLORS['accent_cyan'])
         self.flora_menu.pack(fill="x")
@@ -314,8 +324,8 @@ class PlanetMoonEditor(ctk.CTkToplevel):
         
         self.properties_textbox = ModernTextbox(details_card, label="Properties", placeholder="e.g., Lush forests, mild climate", height=80)
         self.properties_textbox.pack(padx=20, pady=(0, 10), fill="x")
-        
-        self.materials_textbox = ModernTextbox(details_card, label="Materials", placeholder="e.g., Gold, Carbon, Oxygen", height=80)
+
+        self.materials_textbox = ModernTextbox(details_card, label="Resources", placeholder="e.g., Gold, Carbon, Oxygen", height=80)
         self.materials_textbox.pack(padx=20, pady=(0, 10), fill="x")
         
         self.base_entry = ModernEntry(details_card, label="Base Location", placeholder="e.g., (+12.34, -56.78) or N/A")
@@ -364,6 +374,7 @@ class PlanetMoonEditor(ctk.CTkToplevel):
     def load_data(self):
         if self.planet_data:
             self.name_entry.set(self.planet_data.get('name', ''))
+            self.type_var.set(self.planet_data.get('type', 'N/A'))
             self.sentinel_var.set(self.planet_data.get('sentinel', 'N/A'))
             self.fauna_var.set(self.planet_data.get('fauna', 'N/A'))
             self.flora_var.set(self.planet_data.get('flora', 'N/A'))
@@ -440,6 +451,7 @@ class PlanetMoonEditor(ctk.CTkToplevel):
         
         self.result = {
             'name': name,
+            'type': self.type_var.get() or "N/A",
             'sentinel': self.sentinel_var.get() or "N/A",
             'fauna': self.fauna_var.get() or "N/A",
             'flora': self.flora_var.get() or "N/A",

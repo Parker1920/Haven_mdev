@@ -13,18 +13,40 @@ class BaseDiscoveryModal(discord.ui.Modal):
         super().__init__(title=title)
         self.discovery_type = discovery_type
         self.system_name = system_name
-        self.location_info = location_info
+        self.location_info = location_info or ""
         self.config = config
         self.haven_data = haven_data
 
+        # Log what we received
+        import logging
+        logger = logging.getLogger('keeper.discovery_modals')
+        logger.info(f"BaseDiscoveryModal.__init__: Received location_info='{location_info}', system='{system_name}', type='{discovery_type}'")
+
         # Parse location info
-        self.location_type, self.location_name = self._parse_location_info(location_info)
+        self.location_type, self.location_name = self._parse_location_info(self.location_info)
+
+        # ALWAYS log the parsed result
+        logger.info(f"BaseDiscoveryModal.__init__: Parsed -> location_type='{self.location_type}', location_name='{self.location_name}'")
+
+        # Log warning if location_name is missing
+        if not self.location_name:
+            logger.warning(f"BaseDiscoveryModal.__init__: WARNING - location_name is None or empty after parsing!")
 
     def _parse_location_info(self, location_info: str) -> tuple:
         """Parse location info string into type and name."""
+        if not location_info:
+            # Handle None or empty string
+            return "unknown", None
+
         parts = location_info.split(':', 2)
         if len(parts) >= 2:
-            return parts[0], parts[1] if len(parts) == 2 else parts[2]
+            # For "planet:Disey" -> ("planet", "Disey")
+            # For "space:station:Name" -> ("space", "Name")
+            location_type = parts[0]
+            location_name = parts[1] if len(parts) == 2 else parts[2]
+            return location_type, location_name
+
+        # Fallback if no colon found
         return "unknown", location_info
 
     def get_common_data(self):

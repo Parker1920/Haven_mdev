@@ -1168,14 +1168,21 @@ renderer.domElement.addEventListener('click', (e) => {
         html += `</ul>`;
     }
 
-    // For planet detail, show discoveries button if any exist for this planet
-    if (ud.type === 'planet' && window.DISCOVERIES_DATA && window.DISCOVERIES_DATA.length > 0) {
-        const planetDiscoveries = window.DISCOVERIES_DATA.filter(d => 
-            d.planet_id === data.id || (d.discovery_name === data.name && d.system_id)
-        );
-        
-        if (planetDiscoveries.length > 0) {
-            html += `<p style="margin-top: 12px;"><button id="view-discoveries-btn" style="background: #00CED1; color: #000; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-weight: bold;">📍 View ${planetDiscoveries.length} Discover${planetDiscoveries.length !== 1 ? 'ies' : 'y'}</button></p>`;
+    // For planet or moon detail, show discoveries button if any exist
+    if ((ud.type === 'planet' || ud.type === 'moon') && window.DISCOVERIES_DATA && window.DISCOVERIES_DATA.length > 0) {
+        let locationDiscoveries;
+        if (ud.type === 'planet') {
+            locationDiscoveries = window.DISCOVERIES_DATA.filter(d =>
+                d.planet_id === data.id || (d.discovery_name === data.name && d.system_id)
+            );
+        } else if (ud.type === 'moon') {
+            locationDiscoveries = window.DISCOVERIES_DATA.filter(d =>
+                d.moon_id === data.id || (d.discovery_name === data.name && d.location_type === 'moon')
+            );
+        }
+
+        if (locationDiscoveries && locationDiscoveries.length > 0) {
+            html += `<p style="margin-top: 12px;"><button id="view-discoveries-btn" style="background: #00CED1; color: #000; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-weight: bold;">📍 View ${locationDiscoveries.length} Discover${locationDiscoveries.length !== 1 ? 'ies' : 'y'}</button></p>`;
         }
     }
 
@@ -1193,37 +1200,156 @@ renderer.domElement.addEventListener('click', (e) => {
     const discBtn = document.getElementById('view-discoveries-btn');
     if (discBtn) {
         discBtn.addEventListener('click', () => {
-            // Filter and display discoveries for this planet
-            const planetDiscoveries = window.DISCOVERIES_DATA.filter(d => 
-                d.planet_id === data.id || (d.discovery_name === data.name && d.system_id)
-            );
-            
-            if (planetDiscoveries.length > 0) {
-                let discoveryHtml = `<h3>🔍 Discoveries on ${data.name}</h3>`;
-                planetDiscoveries.forEach((disc, idx) => {
-                    discoveryHtml += `<div style="border-left: 3px solid #00CED1; padding-left: 10px; margin: 10px 0; padding-bottom: 10px;">`;
-                    discoveryHtml += `<p><strong>${idx + 1}. ${disc.discovery_type}</strong></p>`;
-                    if (disc.description) discoveryHtml += `<p>${disc.description}</p>`;
-                    if (disc.discovered_by) discoveryHtml += `<p><small>Discovered by: ${disc.discovered_by}</small></p>`;
-                    if (disc.submission_timestamp) {
-                        const date = new Date(disc.submission_timestamp);
-                        discoveryHtml += `<p><small>Date: ${date.toLocaleDateString()}</small></p>`;
-                    }
-                    discoveryHtml += `</div>`;
-                });
-                discoveryHtml += `<p><button id="back-to-planet-btn" style="background: #888; color: #fff; border: none; padding: 6px 10px; border-radius: 3px; cursor: pointer; margin-top: 10px;">← Back</button></p>`;
-                
+            // Filter discoveries based on location type
+            let locationDiscoveries;
+            if (ud.type === 'planet') {
+                locationDiscoveries = window.DISCOVERIES_DATA.filter(d =>
+                    d.planet_id === data.id || (d.discovery_name === data.name && d.system_id)
+                );
+            } else if (ud.type === 'moon') {
+                locationDiscoveries = window.DISCOVERIES_DATA.filter(d =>
+                    d.moon_id === data.id || (d.discovery_name === data.name && d.location_type === 'moon')
+                );
+            }
+
+            if (locationDiscoveries && locationDiscoveries.length > 0) {
                 const contentDiv = document.getElementById('info-content');
                 const originalHtml = contentDiv.innerHTML;
-                contentDiv.innerHTML = discoveryHtml;
-                
-                // Back button restores planet view
-                const backBtn = document.getElementById('back-to-planet-btn');
-                if (backBtn) {
-                    backBtn.addEventListener('click', () => {
-                        contentDiv.innerHTML = originalHtml;
+
+                // Function to render discoveries with optional filter
+                const renderDiscoveries = (filterType = 'All') => {
+                    let filtered = locationDiscoveries;
+                    if (filterType !== 'All') {
+                        filtered = locationDiscoveries.filter(d => d.type === filterType);
+                    }
+
+                    let discoveryHtml = `<h3>🔍 Discoveries on ${data.name}</h3>`;
+
+                    // Add filter dropdown
+                    discoveryHtml += `<div style="margin: 12px 0;">`;
+                    discoveryHtml += `<label style="color: #00CED1; font-weight: bold; margin-right: 8px;">Filter:</label>`;
+                    discoveryHtml += `<select id="discovery-filter" style="background: #222; color: #fff; border: 1px solid #00CED1; padding: 4px 8px; border-radius: 4px; cursor: pointer;">`;
+                    discoveryHtml += `<option value="All">All Types (${locationDiscoveries.length})</option>`;
+
+                    // Get unique discovery types
+                    const types = ['🦴', '📜', '🏛️', '⚙️', '🦗', '💎', '🚀', '⚡', '🆕', '📖'];
+                    const typeNames = {
+                        '🦴': 'Ancient Bones',
+                        '📜': 'Text Logs',
+                        '🏛️': 'Ruins',
+                        '⚙️': 'Alien Tech',
+                        '🦗': 'Flora/Fauna',
+                        '💎': 'Minerals',
+                        '🚀': 'Crashed Ships',
+                        '⚡': 'Hazards',
+                        '🆕': 'NMS Updates',
+                        '📖': 'Player Lore'
+                    };
+
+                    types.forEach(type => {
+                        const count = locationDiscoveries.filter(d => d.type === type).length;
+                        if (count > 0) {
+                            discoveryHtml += `<option value="${type}">${type} ${typeNames[type]} (${count})</option>`;
+                        }
                     });
-                }
+
+                    discoveryHtml += `</select></div>`;
+
+                    // Show discoveries
+                    if (filtered.length === 0) {
+                        discoveryHtml += `<p style="color: #888; font-style: italic;">No discoveries match this filter.</p>`;
+                    } else {
+                        filtered.forEach((disc, idx) => {
+                            discoveryHtml += `<div style="background: rgba(0, 206, 209, 0.08); border-left: 3px solid #00CED1; padding: 12px; margin: 10px 0; border-radius: 4px;">`;
+
+                            // Type and mystery tier
+                            let tierBadge = '';
+                            if (disc.mystery_tier) {
+                                const tierColors = { 1: '#4CAF50', 2: '#2196F3', 3: '#9C27B0', 4: '#F44336' };
+                                tierBadge = `<span style="background: ${tierColors[disc.mystery_tier]}; color: #fff; padding: 2px 8px; border-radius: 10px; font-size: 11px; margin-left: 8px;">Tier ${disc.mystery_tier}</span>`;
+                            }
+                            discoveryHtml += `<p style="margin: 0 0 8px 0;"><strong style="color: #00CED1;">${disc.type || '🔍'} ${disc.discovery_type || 'Discovery'}</strong>${tierBadge}</p>`;
+
+                            // Description
+                            if (disc.description) {
+                                discoveryHtml += `<p style="margin: 6px 0; color: #ddd;">${disc.description}</p>`;
+                            }
+
+                            // Type-specific details
+                            const typeFields = {
+                                '🦴': ['species_type', 'size_scale', 'preservation_quality'],
+                                '📜': ['log_type', 'language', 'condition'],
+                                '🏛️': ['structure_type', 'age_estimate', 'construction_material'],
+                                '⚙️': ['tech_category', 'functionality', 'power_source'],
+                                '🦗': ['species_name', 'behavior', 'rarity'],
+                                '💎': ['mineral_type', 'rarity', 'quantity_estimate'],
+                                '🚀': ['ship_class', 'ship_condition', 'salvageable_tech'],
+                                '⚡': ['hazard_type', 'severity', 'frequency'],
+                                '🆕': ['update_category', 'availability'],
+                                '📖': ['lore_category', 'narrative_arc']
+                            };
+
+                            const fields = typeFields[disc.type] || [];
+                            if (fields.length > 0) {
+                                let detailsHtml = '';
+                                fields.forEach(field => {
+                                    if (disc[field]) {
+                                        const label = field.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                                        detailsHtml += `<span style="color: #888; font-size: 13px;"><strong>${label}:</strong> ${disc[field]} &nbsp;</span>`;
+                                    }
+                                });
+                                if (detailsHtml) {
+                                    discoveryHtml += `<p style="margin: 6px 0; font-size: 13px;">${detailsHtml}</p>`;
+                                }
+                            }
+
+                            // Significance
+                            if (disc.significance) {
+                                discoveryHtml += `<p style="margin: 6px 0; font-style: italic; color: #aaa; font-size: 13px;">💡 ${disc.significance}</p>`;
+                            }
+
+                            // Metadata
+                            let meta = '';
+                            if (disc.username || disc.discovered_by) {
+                                meta += `👤 ${disc.username || disc.discovered_by}`;
+                            }
+                            if (disc.submission_timestamp) {
+                                const date = new Date(disc.submission_timestamp);
+                                if (meta) meta += ' &nbsp;•&nbsp; ';
+                                meta += `📅 ${date.toLocaleDateString()}`;
+                            }
+                            if (meta) {
+                                discoveryHtml += `<p style="margin: 8px 0 0 0; font-size: 12px; color: #666;">${meta}</p>`;
+                            }
+
+                            discoveryHtml += `</div>`;
+                        });
+                    }
+
+                    discoveryHtml += `<p><button id="back-to-location-btn" style="background: #555; color: #fff; border: none; padding: 8px 14px; border-radius: 4px; cursor: pointer; margin-top: 10px; font-weight: bold;">← Back to ${ud.type === 'planet' ? 'Planet' : 'Moon'}</button></p>`;
+
+                    contentDiv.innerHTML = discoveryHtml;
+
+                    // Attach filter change handler
+                    const filterSelect = document.getElementById('discovery-filter');
+                    if (filterSelect) {
+                        filterSelect.value = filterType;
+                        filterSelect.addEventListener('change', (e) => {
+                            renderDiscoveries(e.target.value);
+                        });
+                    }
+
+                    // Back button restores location view
+                    const backBtn = document.getElementById('back-to-location-btn');
+                    if (backBtn) {
+                        backBtn.addEventListener('click', () => {
+                            contentDiv.innerHTML = originalHtml;
+                        });
+                    }
+                };
+
+                // Initial render with all discoveries
+                renderDiscoveries('All');
             }
         });
     }
