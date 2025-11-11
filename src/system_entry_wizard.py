@@ -632,8 +632,8 @@ class SystemEntryWizard(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("Haven System Entry - Wizard")
-        self.geometry("1400x900")
-        self.minsize(1200, 750)  # Set minimum size to ensure buttons are always visible
+        self.geometry("1200x800")  # Reduced from 1400x900 to fit 1366x768 laptop screens
+        self.minsize(1000, 700)  # Reduced minimum to allow smaller screens while keeping buttons visible
         self.configure(fg_color=COLORS['bg_dark'])
 
         # Data - Use user edition path if available
@@ -1424,8 +1424,12 @@ class SystemEntryWizard(ctk.CTk):
 
 def main():
     """Main entry point - NOW RESPECTS DATA SOURCE CONTEXT"""
+    # Enable DPI awareness before creating any windows
+    from common.dpi_awareness import set_dpi_awareness
+    set_dpi_awareness()
+
     import os
-    
+
     # Get data source from environment variable (set by control_room)
     data_source = os.environ.get('HAVEN_DATA_SOURCE', 'production')
     

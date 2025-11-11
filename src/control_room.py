@@ -150,6 +150,7 @@ class ControlRoom(ctk.CTk):
             super().__init__()
             self.title("Haven Control Room")
             self.geometry("980x700")
+            self.minsize(900, 650)  # Prevent resizing too small to see controls
             self.configure(fg_color=COLORS['bg_dark'])
             self._frozen = getattr(sys, 'frozen', False)
             # Data source: 'production', 'testing', 'load_test', or 'yh_database'
@@ -1378,6 +1379,10 @@ class SystemTestMenu(ctk.CTkToplevel):
 
 
 def main():
+    # Enable DPI awareness before creating any windows
+    from common.dpi_awareness import set_dpi_awareness
+    set_dpi_awareness()
+
     try:
         logging.info("=== Haven Control Room Starting ===")
         logging.info(f"Python: {sys.version}")
