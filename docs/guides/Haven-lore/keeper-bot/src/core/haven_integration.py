@@ -462,11 +462,14 @@ class HavenIntegration:
                 result = cursor.fetchone()
                 if result:
                     planet_id = result[0]
+                    logger.info(f"Resolved planet_id={planet_id} for planet '{location_name}'")
+                else:
+                    logger.warning(f"Could not find planet '{location_name}' in system {system_id}")
 
             elif location_type == 'moon' and location_name and system_id:
-                # First get the planet, then the moon
+                # Get both moon_id and parent planet_id
                 cursor.execute("""
-                    SELECT m.id
+                    SELECT m.id, m.planet_id
                     FROM moons m
                     JOIN planets p ON m.planet_id = p.id
                     WHERE p.system_id = ? AND m.name = ?
@@ -474,6 +477,15 @@ class HavenIntegration:
                 result = cursor.fetchone()
                 if result:
                     moon_id = result[0]
+                    planet_id = result[1]  # Also get parent planet_id
+                    logger.info(f"Resolved moon_id={moon_id}, planet_id={planet_id} for moon '{location_name}'")
+                else:
+                    logger.warning(f"Could not find moon '{location_name}' in system {system_id}")
+
+            # Validate that planet/moon discoveries have proper IDs
+            if location_type in ['planet', 'moon'] and not planet_id and not moon_id:
+                logger.error(f"Discovery for {location_type} '{location_name}' has no planet_id or moon_id! Discovery may not appear on map.")
+                logger.error(f"System: {system_name} (ID: {system_id}), Location: {location_name}, Type: {location_type}")
 
             # Insert discovery with type-specific fields
             cursor.execute("""
