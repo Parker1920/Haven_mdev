@@ -78,6 +78,55 @@ class JSONImporter:
             db_path=str(DATABASE_PATH)
         )
 
+    def _normalize_system_data(self, system_data: dict) -> dict:
+        """
+        Normalize system data to ensure consistent structure.
+        Handles mixed planet formats (strings vs objects).
+
+        Args:
+            system_data: Raw system data from JSON
+
+        Returns:
+            Normalized system data with properly structured planets
+        """
+        normalized = dict(system_data)
+
+        # Normalize planets
+        planets = normalized.get('planets', [])
+        if planets:
+            normalized_planets = []
+            for planet in planets:
+                if isinstance(planet, str):
+                    # Convert string planet name to object format
+                    normalized_planets.append({
+                        'name': planet,
+                        'type': 'Unknown',
+                        'fauna': 'Unknown',
+                        'flora': 'Unknown',
+                        'sentinel': 'Unknown',
+                        'materials': 'Unknown',
+                        'moons': []
+                    })
+                elif isinstance(planet, dict):
+                    # Already an object, ensure it has required fields
+                    normalized_planet = {
+                        'name': planet.get('name', 'Unknown'),
+                        'type': planet.get('type', 'Unknown'),
+                        'fauna': planet.get('fauna', 'Unknown'),
+                        'flora': planet.get('flora', 'Unknown'),
+                        'sentinel': planet.get('sentinel', 'Unknown'),
+                        'materials': planet.get('materials', 'Unknown'),
+                        'moons': planet.get('moons', [])
+                    }
+                    # Preserve any additional fields
+                    for key, value in planet.items():
+                        if key not in normalized_planet:
+                            normalized_planet[key] = value
+                    normalized_planets.append(normalized_planet)
+            normalized['planets'] = normalized_planets
+
+        return normalized
+
     def import_file(self, file_path: Path, allow_updates: bool = False,
                    skip_validation: bool = False) -> bool:
         """
@@ -222,6 +271,9 @@ class JSONImporter:
         system_name = system_data.get('name', key)
 
         try:
+            # Normalize system data (handles mixed planet formats)
+            normalized_data = self._normalize_system_data(system_data)
+
             # Check if system exists
             exists = self.provider.system_exists(system_name)
 
@@ -229,7 +281,7 @@ class JSONImporter:
                 if allow_updates:
                     # Update existing system
                     system_id = system_data.get('id', key)
-                    self.provider.update_system(system_id, system_data)
+                    self.provider.update_system(system_id, normalized_data)
                     self.stats.systems_updated += 1
                     print(f"  ↻ Updated: {system_name}")
                 else:
@@ -237,12 +289,27 @@ class JSONImporter:
                     self.stats.systems_skipped += 1
                     print(f"  ⊘ Skipped: {system_name} (already exists)")
             else:
-                # Import new system - ensure id field is not conflicting
-                # Remove id if it exists, let the provider generate a new one
-                system_copy = dict(system_data)
+                # Import new system
+                system_copy = dict(normalized_data)
+                
+                # Handle ID: check if it conflicts with existing IDs
                 if 'id' in system_copy:
-                    del system_copy['id']
-                self.provider.add_system(system_copy)
+                    # Check if this ID already exists in the database
+                    try:
+                        # Try to add with the existing ID
+                        self.provider.add_system(system_copy)
+                    except Exception as id_error:
+                        # If it's a UNIQUE constraint error on ID, generate a new one
+                        if "UNIQUE constraint failed" in str(id_error) or "UNIQUE" in str(id_error):
+                            print(f"    ⚠ Warning: System ID conflict, generating new ID")
+                            del system_copy['id']
+                            self.provider.add_system(system_copy)
+                        else:
+                            raise  # Re-raise if it's a different error
+                else:
+                    # No ID provided, let provider generate one
+                    self.provider.add_system(system_copy)
+                
                 self.stats.systems_imported += 1
                 print(f"  + Imported: {system_name}")
 
