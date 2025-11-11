@@ -528,9 +528,9 @@ class AdminTools(commands.Cog):
             cogs_with_haven = []
 
             # Check enhanced_discovery cog
-            enhanced_discovery = self.bot.get_cog('EnhancedDiscovery')
+            enhanced_discovery = self.bot.get_cog('EnhancedDiscoverySystem')
             if enhanced_discovery and hasattr(enhanced_discovery, 'haven'):
-                cogs_with_haven.append(('EnhancedDiscovery', enhanced_discovery.haven))
+                cogs_with_haven.append(('EnhancedDiscoverySystem', enhanced_discovery.haven))
 
             # Check pattern_recognition cog
             pattern_recognition = self.bot.get_cog('PatternRecognition')
