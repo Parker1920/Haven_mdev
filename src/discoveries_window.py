@@ -292,32 +292,51 @@ class DiscoveriesWindow(ctk.CTkToplevel):
         )
         desc_label.pack(fill="x", padx=15, pady=(0, 10), anchor="w")
 
-        # Details section
-        details = []
+        # Type-specific details section
+        type_specific_details = self._get_type_specific_details(discovery)
+        if type_specific_details:
+            details_frame = ctk.CTkFrame(card, fg_color=COLORS['bg_card'], corner_radius=8)
+            details_frame.pack(fill="x", padx=15, pady=(0, 10))
+
+            for label_text, value_text, icon in type_specific_details:
+                detail_row = ctk.CTkFrame(details_frame, fg_color="transparent")
+                detail_row.pack(fill="x", padx=10, pady=3)
+
+                detail_label = ctk.CTkLabel(
+                    detail_row,
+                    text=f"{icon} {label_text}: {value_text}",
+                    font=ctk.CTkFont(family="Segoe UI", size=12),
+                    text_color=COLORS['text_secondary'],
+                    anchor="w"
+                )
+                detail_label.pack(side="left", fill="x", expand=True)
+
+        # Generic details section (coordinates, condition, time period)
+        generic_details = []
 
         condition = discovery.get('condition')
         if condition:
-            details.append(f"🔧 Condition: {condition}")
+            generic_details.append(f"🔧 Condition: {condition}")
 
         time_period = discovery.get('time_period')
         if time_period:
-            details.append(f"⏳ Era: {time_period}")
+            generic_details.append(f"⏳ Era: {time_period}")
 
         coordinates = discovery.get('coordinates')
         if coordinates:
-            details.append(f"📍 Coordinates: {coordinates}")
+            generic_details.append(f"📍 Coordinates: {coordinates}")
 
-        if details:
-            details_text = " • ".join(details)
-            details_label = ctk.CTkLabel(
+        if generic_details:
+            generic_text = " • ".join(generic_details)
+            generic_label = ctk.CTkLabel(
                 card,
-                text=details_text,
+                text=generic_text,
                 font=ctk.CTkFont(family="Segoe UI", size=11),
                 text_color=COLORS['text_secondary'],
                 wraplength=820,
                 justify="left"
             )
-            details_label.pack(fill="x", padx=15, pady=(0, 10), anchor="w")
+            generic_label.pack(fill="x", padx=15, pady=(0, 10), anchor="w")
 
         # Significance (if provided)
         significance = discovery.get('significance')
@@ -344,6 +363,126 @@ class DiscoveriesWindow(ctk.CTkToplevel):
             text_color=COLORS['text_secondary']
         )
         footer_label.pack(padx=15, pady=(0, 15), anchor="e")
+
+    def _get_type_specific_details(self, discovery: Dict) -> List[tuple]:
+        """
+        Get type-specific details for a discovery
+        Returns list of tuples: (label, value, icon)
+        """
+        discovery_type = discovery.get('discovery_type', '').lower()
+        details = []
+
+        # 🦴 Ancient Bones & Fossils
+        if 'bone' in discovery_type or 'fossil' in discovery_type:
+            if discovery.get('species_type'):
+                details.append(("Species/Creature", discovery['species_type'], "🦖"))
+            if discovery.get('size_scale'):
+                details.append(("Size/Scale", discovery['size_scale'], "📏"))
+            if discovery.get('preservation_quality'):
+                details.append(("Preservation", discovery['preservation_quality'], "⚗️"))
+            if discovery.get('estimated_age'):
+                details.append(("Estimated Age", discovery['estimated_age'], "⏰"))
+
+        # 📜 Text Logs & Documents
+        elif 'log' in discovery_type or 'text' in discovery_type:
+            if discovery.get('language_status'):
+                details.append(("Language Status", discovery['language_status'], "🗣️"))
+            if discovery.get('completeness'):
+                details.append(("Completeness", discovery['completeness'], "📄"))
+            if discovery.get('author_origin'):
+                details.append(("Author/Origin", discovery['author_origin'], "✍️"))
+            if discovery.get('key_excerpt'):
+                details.append(("Key Excerpt", discovery['key_excerpt'], "💬"))
+
+        # 🏛️ Ruins & Structures
+        elif 'ruin' in discovery_type or 'structure' in discovery_type:
+            if discovery.get('structure_type'):
+                details.append(("Structure Type", discovery['structure_type'], "🏗️"))
+            if discovery.get('architectural_style'):
+                details.append(("Architecture", discovery['architectural_style'], "🎨"))
+            if discovery.get('structural_integrity'):
+                details.append(("Integrity", discovery['structural_integrity'], "🔨"))
+            if discovery.get('purpose_function'):
+                details.append(("Purpose", discovery['purpose_function'], "🎯"))
+
+        # ⚙️ Alien Technology
+        elif 'tech' in discovery_type or 'technology' in discovery_type:
+            if discovery.get('tech_category'):
+                details.append(("Technology Type", discovery['tech_category'], "🔧"))
+            if discovery.get('operational_status'):
+                details.append(("Operational Status", discovery['operational_status'], "⚡"))
+            if discovery.get('power_source'):
+                details.append(("Power Source", discovery['power_source'], "🔋"))
+            if discovery.get('reverse_engineering'):
+                details.append(("Reverse Engineering", discovery['reverse_engineering'], "🔬"))
+
+        # 🦗 Flora & Fauna
+        elif 'flora' in discovery_type or 'fauna' in discovery_type:
+            if discovery.get('species_name'):
+                details.append(("Species Name", discovery['species_name'], "🌿"))
+            if discovery.get('behavioral_notes'):
+                details.append(("Behavior", discovery['behavioral_notes'], "👀"))
+            if discovery.get('habitat_biome'):
+                details.append(("Habitat", discovery['habitat_biome'], "🌍"))
+            if discovery.get('threat_level'):
+                details.append(("Threat Level", discovery['threat_level'], "⚠️"))
+
+        # 💎 Minerals & Resources
+        elif 'mineral' in discovery_type or 'resource' in discovery_type:
+            if discovery.get('resource_type'):
+                details.append(("Resource Type", discovery['resource_type'], "💰"))
+            if discovery.get('deposit_richness'):
+                details.append(("Richness", discovery['deposit_richness'], "📊"))
+            if discovery.get('extraction_method'):
+                details.append(("Extraction Method", discovery['extraction_method'], "⛏️"))
+            if discovery.get('economic_value'):
+                details.append(("Economic Value", discovery['economic_value'], "💵"))
+
+        # 🚀 Crashed Ships
+        elif 'ship' in discovery_type or 'crash' in discovery_type:
+            if discovery.get('ship_class'):
+                details.append(("Ship Class", discovery['ship_class'], "🛸"))
+            if discovery.get('hull_condition'):
+                details.append(("Hull Condition", discovery['hull_condition'], "🔩"))
+            if discovery.get('salvageable_tech'):
+                details.append(("Salvageable Tech", discovery['salvageable_tech'], "🔧"))
+            if discovery.get('pilot_status'):
+                details.append(("Pilot Status", discovery['pilot_status'], "👨‍🚀"))
+
+        # ⚡ Hazards & Phenomena
+        elif 'hazard' in discovery_type or 'phenomenon' in discovery_type:
+            if discovery.get('hazard_type'):
+                details.append(("Hazard Type", discovery['hazard_type'], "☢️"))
+            if discovery.get('severity_level'):
+                details.append(("Severity", discovery['severity_level'], "📈"))
+            if discovery.get('duration_frequency'):
+                details.append(("Duration/Frequency", discovery['duration_frequency'], "⏱️"))
+            if discovery.get('protection_required'):
+                details.append(("Protection Required", discovery['protection_required'], "🛡️"))
+
+        # 🆕 NMS Updates & Content
+        elif 'update' in discovery_type or 'nms' in discovery_type:
+            if discovery.get('update_name'):
+                details.append(("Update Name", discovery['update_name'], "🎮"))
+            if discovery.get('feature_category'):
+                details.append(("Feature Category", discovery['feature_category'], "📦"))
+            if discovery.get('gameplay_impact'):
+                details.append(("Gameplay Impact", discovery['gameplay_impact'], "🎯"))
+            if discovery.get('first_impressions'):
+                details.append(("First Impressions", discovery['first_impressions'], "💭"))
+
+        # 📖 Player Lore & Stories
+        elif 'lore' in discovery_type or 'story' in discovery_type or 'player' in discovery_type:
+            if discovery.get('story_type'):
+                details.append(("Story Type", discovery['story_type'], "📚"))
+            if discovery.get('lore_connections'):
+                details.append(("Lore Connections", discovery['lore_connections'], "🔗"))
+            if discovery.get('creative_elements'):
+                details.append(("Creative Elements", discovery['creative_elements'], "✨"))
+            if discovery.get('collaborative_work'):
+                details.append(("Collaboration", discovery['collaborative_work'], "🤝"))
+
+        return details
 
     def _get_type_icon(self, discovery_type: str) -> str:
         """Get emoji icon for discovery type"""

@@ -475,17 +475,29 @@ class HavenIntegration:
                 if result:
                     moon_id = result[0]
 
-            # Insert discovery
+            # Insert discovery with type-specific fields
             cursor.execute("""
                 INSERT INTO discoveries (
                     discovery_type, discovery_name, system_id, planet_id, moon_id,
                     location_type, location_name, description, coordinates, condition,
                     time_period, significance, photo_url, evidence_urls,
                     discovered_by, discord_user_id, discord_guild_id,
-                    pattern_matches, mystery_tier, analysis_status, tags, metadata
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    pattern_matches, mystery_tier, analysis_status, tags, metadata,
+                    species_type, size_scale, preservation_quality, estimated_age,
+                    language_status, completeness, author_origin, key_excerpt,
+                    structure_type, architectural_style, structural_integrity, purpose_function,
+                    tech_category, operational_status, power_source, reverse_engineering,
+                    species_name, behavioral_notes, habitat_biome, threat_level,
+                    resource_type, deposit_richness, extraction_method, economic_value,
+                    ship_class, hull_condition, salvageable_tech, pilot_status,
+                    hazard_type, severity_level, duration_frequency, protection_required,
+                    update_name, feature_category, gameplay_impact, first_impressions,
+                    story_type, lore_connections, creative_elements, collaborative_work
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
-                discovery_data.get('discovery_type'),
+                discovery_data.get('type') or discovery_data.get('discovery_type'),
                 discovery_data.get('discovery_name'),
                 system_id,
                 planet_id,
@@ -506,7 +518,48 @@ class HavenIntegration:
                 discovery_data.get('mystery_tier', 0),
                 discovery_data.get('analysis_status', 'pending'),
                 discovery_data.get('tags'),
-                discovery_data.get('metadata')
+                discovery_data.get('metadata'),
+                # Type-specific fields
+                discovery_data.get('species_type'),
+                discovery_data.get('size_scale'),
+                discovery_data.get('preservation_quality'),
+                discovery_data.get('estimated_age'),
+                discovery_data.get('language_status'),
+                discovery_data.get('completeness'),
+                discovery_data.get('author_origin'),
+                discovery_data.get('key_excerpt'),
+                discovery_data.get('structure_type'),
+                discovery_data.get('architectural_style'),
+                discovery_data.get('structural_integrity'),
+                discovery_data.get('purpose_function'),
+                discovery_data.get('tech_category'),
+                discovery_data.get('operational_status'),
+                discovery_data.get('power_source'),
+                discovery_data.get('reverse_engineering'),
+                discovery_data.get('species_name'),
+                discovery_data.get('behavioral_notes'),
+                discovery_data.get('habitat_biome'),
+                discovery_data.get('threat_level'),
+                discovery_data.get('resource_type'),
+                discovery_data.get('deposit_richness'),
+                discovery_data.get('extraction_method'),
+                discovery_data.get('economic_value'),
+                discovery_data.get('ship_class'),
+                discovery_data.get('hull_condition'),
+                discovery_data.get('salvageable_tech'),
+                discovery_data.get('pilot_status'),
+                discovery_data.get('hazard_type'),
+                discovery_data.get('severity_level'),
+                discovery_data.get('duration_frequency'),
+                discovery_data.get('protection_required'),
+                discovery_data.get('update_name'),
+                discovery_data.get('feature_category'),
+                discovery_data.get('gameplay_impact'),
+                discovery_data.get('first_impressions'),
+                discovery_data.get('story_type'),
+                discovery_data.get('lore_connections'),
+                discovery_data.get('creative_elements'),
+                discovery_data.get('collaborative_work')
             ))
 
             conn.commit()

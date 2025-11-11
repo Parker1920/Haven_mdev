@@ -696,122 +696,10 @@ if (VIEW_MODE === 'system' && typeof MoonRenderer !== 'undefined') {
 }
 
 // ========== Discovery Visualization ==========
-// Render discoveries as special markers on the map
+// Discoveries are NOT rendered as physical markers on the map
+// They are only accessible via the "View X Discoveries" button on planet/moon detail panels
 if (window.DISCOVERIES_DATA && window.DISCOVERIES_DATA.length > 0) {
-    console.log(`[DISCOVERY] Rendering ${window.DISCOVERIES_DATA.length} discoveries...`);
-    
-    // Discovery icon colors by type
-    const discoveryColors = {
-        'bones': 0xd4a574,           // tan/bone color
-        'logs': 0x00ff88,            // green
-        'ruins': 0xffa500,           // orange
-        'tech': 0x00d9ff,            // cyan
-        'flora': 0x00ff00,           // lime green
-        'fauna': 0xff69b4,           // hot pink
-        'text': 0xffff00,           // yellow
-        'energy': 0xff0000,          // red
-        'signal': 0x8f00ff,          // purple
-        'structure': 0xc0c0c0,       // silver
-        'default': 0x888888          // gray
-    };
-    
-    // Try to get system data for geocoding discoveries
-    const systemMap = new Map();
-    if (Array.isArray(SYSTEM_DATA)) {
-        SYSTEM_DATA.forEach(item => {
-            if (item.type === 'system' || (item.type === 'planet' && item.x !== undefined)) {
-                const key = item.data && item.data.id ? item.data.id : item.id;
-                if (key) {
-                    systemMap.set(key, item);
-                }
-            }
-        });
-    }
-    
-    window.DISCOVERIES_DATA.forEach(discovery => {
-        try {
-            // Try to find system coordinates for this discovery
-            let x, y, z;
-            
-            if (discovery.system_id && systemMap.has(discovery.system_id)) {
-                const system = systemMap.get(discovery.system_id);
-                x = system.x || 0;
-                y = system.y || 0;
-                z = system.z || 0;
-            } else if (discovery.x !== undefined && discovery.y !== undefined && discovery.z !== undefined) {
-                // Discovery has its own coordinates
-                x = discovery.x;
-                y = discovery.y;
-                z = discovery.z;
-            } else {
-                // Skip if we can't locate the discovery
-                console.warn('[DISCOVERY] Could not locate discovery:', discovery);
-                return;
-            }
-            
-            // Add slight offset so discovery doesn't overlap with system
-            x += (Math.random() - 0.5) * 0.5;
-            y += (Math.random() - 0.5) * 0.5;
-            z += (Math.random() - 0.5) * 0.5;
-            
-            // Create discovery marker (small pyramid/star shape)
-            const discoveryType = (discovery.discovery_type || 'default').toLowerCase();
-            const color = discoveryColors[discoveryType] || discoveryColors['default'];
-            
-            const geometry = new THREE.TetrahedronGeometry(0.15, 0);
-            const material = new THREE.MeshPhongMaterial({
-                color: color,
-                transparent: true,
-                opacity: 0.85,
-                emissive: color,
-                emissiveIntensity: 0.4,
-                shininess: 100
-            });
-            const mesh = new THREE.Mesh(geometry, material);
-            mesh.position.set(x, y, z);
-            
-            // Rotate for better visibility
-            mesh.rotation.z = Math.random() * Math.PI;
-            
-            // Store discovery data for interaction
-            mesh.userData = {
-                type: 'discovery',
-                name: discovery.discovery_type || 'Unknown Discovery',
-                data: discovery,
-                discovery_id: discovery.id,
-                discovery_type: discovery.discovery_type,
-                system_id: discovery.system_id
-            };
-            
-            // Add glow effect
-            const outlineGeometry = new THREE.TetrahedronGeometry(0.18, 0);
-            const outlineMaterial = new THREE.MeshBasicMaterial({
-                color: color,
-                transparent: true,
-                opacity: 0.3,
-                side: THREE.BackSide
-            });
-            const outline = new THREE.Mesh(outlineGeometry, outlineMaterial);
-            mesh.add(outline);
-            
-            // Add larger hit radius for easier interaction
-            const hitGeo = new THREE.SphereGeometry(0.35, 8, 8);
-            const hitMat = new THREE.MeshBasicMaterial({ visible: false });
-            const hitMesh = new THREE.Mesh(hitGeo, hitMat);
-            hitMesh.userData = { ...mesh.userData, target: mesh };
-            mesh.add(hitMesh);
-            
-            scene.add(mesh);
-            objects.push(mesh);
-            objects.push(hitMesh);
-            
-            console.log(`[DISCOVERY] Added ${discovery.discovery_type} discovery at (${x.toFixed(2)}, ${y.toFixed(2)}, ${z.toFixed(2)})`);
-        } catch (e) {
-            console.error('[DISCOVERY] Failed to render discovery:', discovery, e);
-        }
-    });
-    
-    console.log(`[DISCOVERY] Successfully rendered discoveries`);
+    console.log(`[DISCOVERY] ${window.DISCOVERIES_DATA.length} discoveries loaded (available in planet detail panels)`);
 } else {
     console.log('[DISCOVERY] No discoveries to display');
 }
@@ -1280,6 +1168,17 @@ renderer.domElement.addEventListener('click', (e) => {
         html += `</ul>`;
     }
 
+    // For planet detail, show discoveries button if any exist for this planet
+    if (ud.type === 'planet' && window.DISCOVERIES_DATA && window.DISCOVERIES_DATA.length > 0) {
+        const planetDiscoveries = window.DISCOVERIES_DATA.filter(d => 
+            d.planet_id === data.id || (d.discovery_name === data.name && d.system_id)
+        );
+        
+        if (planetDiscoveries.length > 0) {
+            html += `<p style="margin-top: 12px;"><button id="view-discoveries-btn" style="background: #00CED1; color: #000; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-weight: bold;">📍 View ${planetDiscoveries.length} Discover${planetDiscoveries.length !== 1 ? 'ies' : 'y'}</button></p>`;
+        }
+    }
+
     // Show photo if available
     if (data.photo) {
         const href = resolvePhotoHref(data.photo);
@@ -1289,6 +1188,45 @@ renderer.domElement.addEventListener('click', (e) => {
     }
     
     document.getElementById('info-content').innerHTML = html;
+    
+    // Attach click handler to discoveries button if it exists
+    const discBtn = document.getElementById('view-discoveries-btn');
+    if (discBtn) {
+        discBtn.addEventListener('click', () => {
+            // Filter and display discoveries for this planet
+            const planetDiscoveries = window.DISCOVERIES_DATA.filter(d => 
+                d.planet_id === data.id || (d.discovery_name === data.name && d.system_id)
+            );
+            
+            if (planetDiscoveries.length > 0) {
+                let discoveryHtml = `<h3>🔍 Discoveries on ${data.name}</h3>`;
+                planetDiscoveries.forEach((disc, idx) => {
+                    discoveryHtml += `<div style="border-left: 3px solid #00CED1; padding-left: 10px; margin: 10px 0; padding-bottom: 10px;">`;
+                    discoveryHtml += `<p><strong>${idx + 1}. ${disc.discovery_type}</strong></p>`;
+                    if (disc.description) discoveryHtml += `<p>${disc.description}</p>`;
+                    if (disc.discovered_by) discoveryHtml += `<p><small>Discovered by: ${disc.discovered_by}</small></p>`;
+                    if (disc.submission_timestamp) {
+                        const date = new Date(disc.submission_timestamp);
+                        discoveryHtml += `<p><small>Date: ${date.toLocaleDateString()}</small></p>`;
+                    }
+                    discoveryHtml += `</div>`;
+                });
+                discoveryHtml += `<p><button id="back-to-planet-btn" style="background: #888; color: #fff; border: none; padding: 6px 10px; border-radius: 3px; cursor: pointer; margin-top: 10px;">← Back</button></p>`;
+                
+                const contentDiv = document.getElementById('info-content');
+                const originalHtml = contentDiv.innerHTML;
+                contentDiv.innerHTML = discoveryHtml;
+                
+                // Back button restores planet view
+                const backBtn = document.getElementById('back-to-planet-btn');
+                if (backBtn) {
+                    backBtn.addEventListener('click', () => {
+                        contentDiv.innerHTML = originalHtml;
+                    });
+                }
+            }
+        });
+    }
 }
 
 // Keyboard navigation
