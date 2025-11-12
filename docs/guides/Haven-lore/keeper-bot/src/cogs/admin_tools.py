@@ -297,24 +297,35 @@ class AdminTools(commands.Cog):
             'tiers': {},
             'recent_activity': []
         }
-        
+
         try:
-            # Discovery stats
-            cursor = await self.db.connection.execute(
-                "SELECT COUNT(*) FROM discoveries WHERE guild_id = ?", (guild_id,)
-            )
-            stats['discoveries']['total'] = (await cursor.fetchone())[0]
-            
+            # Use Haven integration to get master database path
+            import sqlite3
+            import os
+            haven_db_path = os.getenv('HAVEN_DB_PATH')
+
+            if not haven_db_path or not os.path.exists(haven_db_path):
+                logger.error("Haven database not found at HAVEN_DB_PATH")
+                return stats
+
+            # Connect to VH-Database.db (master database)
+            conn = sqlite3.connect(haven_db_path)
+            cursor = conn.cursor()
+
+            # Discovery stats - total
+            cursor.execute("SELECT COUNT(*) FROM discoveries WHERE discord_guild_id = ?", (guild_id,))
+            stats['discoveries']['total'] = cursor.fetchone()[0]
+
             # Weekly discoveries
             week_ago = (datetime.utcnow() - timedelta(days=7)).isoformat()
-            cursor = await self.db.connection.execute(
-                "SELECT COUNT(*) FROM discoveries WHERE guild_id = ? AND submission_timestamp >= ?",
+            cursor.execute(
+                "SELECT COUNT(*) FROM discoveries WHERE discord_guild_id = ? AND submission_timestamp >= ?",
                 (guild_id, week_ago)
             )
-            stats['discoveries']['week'] = (await cursor.fetchone())[0]
+            stats['discoveries']['week'] = cursor.fetchone()[0]
             
             # Pattern stats
-            cursor = await self.db.connection.execute("SELECT COUNT(*), AVG(confidence) FROM patterns")
+            cursor = await self.db.connection.execute("SELECT COUNT(*), AVG(confidence_level) FROM patterns")
             result = await cursor.fetchone()
             stats['patterns']['total'] = result[0] or 0
             stats['patterns']['avg_confidence'] = result[1] or 0
@@ -357,7 +368,7 @@ class AdminTools(commands.Cog):
             
             # Recent activity
             cursor = await self.db.connection.execute("""
-                SELECT type, username, submission_timestamp FROM discoveries 
+                SELECT discovery_type, username, submission_timestamp FROM discoveries
                 WHERE guild_id = ? ORDER BY submission_timestamp DESC LIMIT 5
             """, (guild_id,))
             

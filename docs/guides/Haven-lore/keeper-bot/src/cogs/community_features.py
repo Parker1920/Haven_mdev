@@ -1111,24 +1111,64 @@ class CommunityFeatures(commands.Cog):
         }
 
         try:
-            # Discovery leaderboard - Top explorers by discovery count
-            cursor = await self.db.connection.execute("""
-                SELECT user_id, username, COUNT(*) as count, type as latest_type
-                FROM discoveries
-                WHERE guild_id = ?
-                GROUP BY user_id
-                ORDER BY count DESC
-                LIMIT 10
-            """, (guild_id,))
+            # Discovery leaderboard - Query VH-Database.db (master) for complete data
+            import sqlite3
+            import os
 
-            rows = await cursor.fetchall()
-            for row in rows:
-                leaderboard['discoveries'].append({
-                    'user_id': row[0],
-                    'username': row[1] or 'Unknown Explorer',
-                    'count': row[2],
-                    'latest_type': row[3] if len(row) > 3 else 'Unknown'
-                })
+            haven_db_path = os.getenv('HAVEN_DB_PATH')
+            use_haven = haven_db_path and os.path.exists(haven_db_path)
+
+            if use_haven:
+                try:
+                    conn = sqlite3.connect(haven_db_path)
+                    conn.row_factory = sqlite3.Row
+                    cursor = conn.cursor()
+
+                    # Discovery leaderboard from Haven database
+                    cursor.execute("""
+                        SELECT discord_user_id as user_id, discovered_by as username,
+                               COUNT(*) as count, discovery_type as latest_type
+                        FROM discoveries
+                        WHERE discord_guild_id = ?
+                        GROUP BY discord_user_id
+                        ORDER BY count DESC
+                        LIMIT 10
+                    """, (guild_id,))
+
+                    rows = cursor.fetchall()
+                    for row in rows:
+                        leaderboard['discoveries'].append({
+                            'user_id': row['user_id'],
+                            'username': row['username'] or 'Unknown Explorer',
+                            'count': row['count'],
+                            'latest_type': row['latest_type'] if row['latest_type'] else 'Unknown'
+                        })
+
+                    conn.close()
+                except Exception as e:
+                    logger.error(f"Error querying Haven database for leaderboard: {e}")
+                    use_haven = False
+
+            # Fallback to keeper.db if Haven not available
+            if not use_haven or len(leaderboard['discoveries']) == 0:
+                cursor = await self.db.connection.execute("""
+                    SELECT user_id, username, COUNT(*) as count, discovery_type as latest_type
+                    FROM discoveries
+                    WHERE guild_id = ?
+                    GROUP BY user_id
+                    ORDER BY count DESC
+                    LIMIT 10
+                """, (guild_id,))
+
+                rows = await cursor.fetchall()
+                leaderboard['discoveries'] = []  # Clear any partial data
+                for row in rows:
+                    leaderboard['discoveries'].append({
+                        'user_id': row[0],
+                        'username': row[1] or 'Unknown Explorer',
+                        'count': row[2],
+                        'latest_type': row[3] if len(row) > 3 else 'Unknown'
+                    })
 
             # Pattern contribution leaderboard
             cursor = await self.db.connection.execute("""
@@ -1155,35 +1195,118 @@ class CommunityFeatures(commands.Cog):
                     'count': row[1]
                 })
 
-            # Recent top contributors (last 7 days)
+            # Recent top contributors (last 7 days) - Use Haven DB if available
             week_ago = (datetime.utcnow() - timedelta(days=7)).isoformat()
-            cursor = await self.db.connection.execute("""
-                SELECT user_id, username, COUNT(*) as count
-                FROM discoveries
-                WHERE guild_id = ? AND submission_timestamp >= ?
-                GROUP BY user_id
-                ORDER BY count DESC
-                LIMIT 5
-            """, (guild_id, week_ago))
 
-            recent_rows = await cursor.fetchall()
-            for row in recent_rows:
-                leaderboard['recent'].append({
-                    'user_id': row[0],
-                    'username': row[1] or 'Unknown Explorer',
-                    'count': row[2]
-                })
+            if use_haven and os.path.exists(haven_db_path):
+                try:
+                    conn = sqlite3.connect(haven_db_path)
+                    conn.row_factory = sqlite3.Row
+                    cursor = conn.cursor()
 
-            # Mystery tier leaderboard - Highest tier users
-            cursor = await self.db.connection.execute("""
-                SELECT user_id, username, COUNT(*) as discoveries,
-                       (SELECT COUNT(DISTINCT pattern_id) FROM pattern_contributions WHERE user_id = discoveries.user_id) as patterns
-                FROM discoveries
-                WHERE guild_id = ?
-                GROUP BY user_id
-                ORDER BY discoveries DESC, patterns DESC
-                LIMIT 10
-            """, (guild_id,))
+                    cursor.execute("""
+                        SELECT discord_user_id as user_id, discovered_by as username, COUNT(*) as count
+                        FROM discoveries
+                        WHERE discord_guild_id = ? AND submission_timestamp >= ?
+                        GROUP BY discord_user_id
+                        ORDER BY count DESC
+                        LIMIT 5
+                    """, (guild_id, week_ago))
+
+                    recent_rows = cursor.fetchall()
+                    for row in recent_rows:
+                        leaderboard['recent'].append({
+                            'user_id': row['user_id'],
+                            'username': row['username'] or 'Unknown Explorer',
+                            'count': row['count']
+                        })
+
+                    conn.close()
+                except Exception as e:
+                    logger.error(f"Error querying Haven for recent contributors: {e}")
+                    use_haven = False
+
+            # Fallback to keeper.db for recent contributors
+            if not use_haven or len(leaderboard['recent']) == 0:
+                cursor = await self.db.connection.execute("""
+                    SELECT user_id, username, COUNT(*) as count
+                    FROM discoveries
+                    WHERE guild_id = ? AND submission_timestamp >= ?
+                    GROUP BY user_id
+                    ORDER BY count DESC
+                    LIMIT 5
+                """, (guild_id, week_ago))
+
+                recent_rows = await cursor.fetchall()
+                leaderboard['recent'] = []  # Clear any partial data
+                for row in recent_rows:
+                    leaderboard['recent'].append({
+                        'user_id': row[0],
+                        'username': row[1] or 'Unknown Explorer',
+                        'count': row[2]
+                    })
+
+            # Mystery tier leaderboard - Use Haven DB if available
+            if use_haven and os.path.exists(haven_db_path):
+                try:
+                    conn = sqlite3.connect(haven_db_path)
+                    conn.row_factory = sqlite3.Row
+                    cursor = conn.cursor()
+
+                    cursor.execute("""
+                        SELECT discord_user_id as user_id, discovered_by as username, COUNT(*) as discoveries
+                        FROM discoveries
+                        WHERE discord_guild_id = ?
+                        GROUP BY discord_user_id
+                        ORDER BY discoveries DESC
+                        LIMIT 10
+                    """, (guild_id,))
+
+                    tier_rows = cursor.fetchall()
+                    conn.close()
+
+                    for row in tier_rows:
+                        discoveries_count = row['discoveries']
+                        # Pattern contributions still need to come from keeper.db
+                        pattern_cursor = await self.db.connection.execute(
+                            "SELECT COUNT(DISTINCT pattern_id) FROM pattern_contributions WHERE user_id = ?",
+                            (row['user_id'],)
+                        )
+                        patterns_count = (await pattern_cursor.fetchone())[0] or 0
+
+                        # Calculate tier based on discoveries + patterns
+                        if discoveries_count >= 30 and patterns_count >= 5:
+                            tier = 4
+                        elif discoveries_count >= 15 and patterns_count >= 3:
+                            tier = 3
+                        elif discoveries_count >= 5 and patterns_count >= 1:
+                            tier = 2
+                        else:
+                            tier = 1
+
+                        leaderboard['tiers'].append({
+                            'user_id': row['user_id'],
+                            'username': row['username'] or 'Unknown Explorer',
+                            'tier': tier,
+                            'discoveries': discoveries_count,
+                            'patterns': patterns_count
+                        })
+
+                except Exception as e:
+                    logger.error(f"Error querying Haven for tier leaderboard: {e}")
+                    use_haven = False
+
+            # Fallback to keeper.db for tier leaderboard
+            if not use_haven or len(leaderboard['tiers']) == 0:
+                cursor = await self.db.connection.execute("""
+                    SELECT user_id, username, COUNT(*) as discoveries,
+                           (SELECT COUNT(DISTINCT pattern_id) FROM pattern_contributions WHERE user_id = discoveries.user_id) as patterns
+                    FROM discoveries
+                    WHERE guild_id = ?
+                    GROUP BY user_id
+                    ORDER BY discoveries DESC, patterns DESC
+                    LIMIT 10
+                """, (guild_id,))
 
             tier_rows = await cursor.fetchall()
             for row in tier_rows:
