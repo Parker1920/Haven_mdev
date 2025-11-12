@@ -318,8 +318,24 @@ class EnhancedDiscoverySystem(commands.Cog):
     )
     async def discovery_report(self, interaction: discord.Interaction):
         """Main command to start discovery reporting with Haven integration."""
-        
-        await interaction.response.defer()
+
+        try:
+            await interaction.response.defer(ephemeral=True)
+        except discord.errors.NotFound:
+            # Interaction token expired - this happens with network lag
+            # Try to send a followup instead
+            logger.warning(f"Interaction token expired for user {interaction.user.id}, attempting recovery")
+            try:
+                await interaction.followup.send(
+                    "⚠️ Network delay detected. Please try the command again.",
+                    ephemeral=True
+                )
+            except:
+                pass
+            return
+        except Exception as e:
+            logger.error(f"Error deferring interaction: {e}")
+            return
         
         # Check if Haven data is available
         haven_systems = self.haven.get_all_systems()
@@ -446,7 +462,11 @@ class EnhancedDiscoverySystem(commands.Cog):
             
             # Check for automatic act transitions
             await self._check_story_progression(interaction.guild)
-            
+
+            # Get user's tier for signal strength calculation
+            user_tier = await self._get_user_tier(str(interaction.user.id), str(interaction.guild.id))
+            enhanced_data['user_tier'] = user_tier
+
             # Create Keeper analysis response
             analysis_embed = self.personality.create_discovery_analysis(enhanced_data)
             
@@ -592,6 +612,38 @@ class EnhancedDiscoverySystem(commands.Cog):
             )
             await interaction.followup.send(embed=error_embed)
     
+    async def _get_user_tier(self, user_id: str, guild_id: str) -> int:
+        """Get user's current tier for signal strength calculation."""
+        try:
+            # Get user's discovery count
+            cursor = await self.db.connection.execute(
+                "SELECT COUNT(*) FROM discoveries WHERE user_id = ? AND guild_id = ?",
+                (user_id, guild_id)
+            )
+            discoveries = (await cursor.fetchone())[0]
+
+            # Get pattern contributions
+            cursor = await self.db.connection.execute(
+                "SELECT COUNT(DISTINCT pattern_id) FROM pattern_contributions WHERE user_id = ?",
+                (user_id,)
+            )
+            result = await cursor.fetchone()
+            patterns = result[0] if result else 0
+
+            # Calculate tier (same logic as community_features.py)
+            if discoveries >= 30 and patterns >= 5:
+                return 4
+            elif discoveries >= 15 and patterns >= 3:
+                return 3
+            elif discoveries >= 5 and patterns >= 1:
+                return 2
+            else:
+                return 1
+
+        except Exception as e:
+            logger.error(f"Error getting user tier: {e}")
+            return 1  # Default to Tier 1
+
     async def _check_story_progression(self, guild):
         """Check if community has reached act transition milestones."""
         try:

@@ -184,7 +184,108 @@ class KeeperPersonality:
         )
         
         return embed
-    
+
+    def calculate_temporal_marker(self, discovery_data: Dict) -> str:
+        """Calculate temporal marker based on discovery context and patterns."""
+        discovery_type = discovery_data.get('type', 'Unknown')
+
+        # Check for type-specific age fields first
+        if discovery_data.get('estimated_age'):
+            age = discovery_data['estimated_age']
+            # Enhance with era context
+            if any(word in age.lower() for word in ['ancient', 'millions', 'old']):
+                return f"Pre-Convergence Era ({age})"
+            elif any(word in age.lower() for word in ['recent', 'new', 'modern']):
+                return f"Current Iteration ({age})"
+            else:
+                return age
+
+        # Check for update content (newest discoveries)
+        if discovery_data.get('update_name'):
+            return f"Post-{discovery_data['update_name']} Era"
+
+        # Pattern-based temporal assignment
+        pattern_confidence = discovery_data.get('pattern_confidence', 0)
+        if pattern_confidence > 0:
+            mystery_tier = discovery_data.get('mystery_tier', 1)
+            if mystery_tier == 4:
+                return "Primordial Era (Pre-Atlas)"
+            elif mystery_tier == 3:
+                return "First Spawn Era (Ancient)"
+            elif mystery_tier == 2:
+                return "Middle Era (Historical)"
+            else:
+                return "Recent Era (Contemporary)"
+
+        # Discovery type-based defaults
+        temporal_contexts = {
+            '🦴': "Pre-Convergence Era",  # Ancient bones
+            '🏛️': "First Spawn Era",      # Ruins
+            '📜': "Archived Era",          # Text logs
+            '⚙️': "Atlas-Era Technology",  # Tech
+            '🦗': "Current Biosphere",     # Flora/Fauna
+            '💎': "Geological Time",       # Minerals
+            '🚀': "Recent Crash Event",    # Ships
+            '⚡': "Active Phenomenon",     # Hazards
+            '🆕': "Post-Atlas Awakening",  # Update content
+            '📖': "Consciousness Echo"     # Player lore
+        }
+
+        return temporal_contexts.get(discovery_type, "Current Iteration")
+
+    def calculate_signal_strength(self, discovery_data: Dict, user_tier: int = 1) -> str:
+        """Calculate signal strength based on discovery quality metrics."""
+        score = 0
+
+        # Description quality (max 30 points)
+        description = discovery_data.get('description', '')
+        desc_len = len(description)
+        if desc_len > 300:
+            score += 30
+        elif desc_len > 150:
+            score += 20
+        elif desc_len > 75:
+            score += 10
+
+        # Evidence attachment (25 points)
+        if discovery_data.get('evidence_url'):
+            score += 25
+
+        # Pattern confidence (30 points)
+        pattern_confidence = discovery_data.get('pattern_confidence', 0)
+        score += pattern_confidence * 30
+
+        # User tier bonus (max 15 points) - experienced explorers get higher signals
+        score += min(user_tier * 5, 15)
+
+        # Check type-specific condition fields
+        type_conditions = {
+            'preservation_quality': discovery_data.get('preservation_quality'),
+            'hull_condition': discovery_data.get('hull_condition'),
+            'operational_status': discovery_data.get('operational_status'),
+            'structural_integrity': discovery_data.get('structural_integrity')
+        }
+
+        # If specific condition exists, enhance with quality term
+        for field_name, field_value in type_conditions.items():
+            if field_value:
+                if any(word in field_value.lower() for word in ['excellent', 'pristine', 'perfect', 'intact']):
+                    score += 10
+                elif any(word in field_value.lower() for word in ['good', 'stable', 'operational']):
+                    score += 5
+
+        # Convert score to signal strength display
+        if score >= 80:
+            return "⚡⚡⚡ Cosmic Resonance (High Significance)"
+        elif score >= 60:
+            return "⚡⚡ Strong Signal (Notable Pattern)"
+        elif score >= 40:
+            return "⚡ Moderate Signal (Clear Data)"
+        elif score >= 20:
+            return "Weak Signal (Partial Data)"
+        else:
+            return "Faint Trace (Requires Verification)"
+
     def create_discovery_analysis(self, discovery_data: Dict) -> discord.Embed:
         """Create a discovery analysis embed in The Keeper's voice."""
         discovery_type = discovery_data.get('type', 'Unknown')
@@ -218,16 +319,21 @@ class KeeperPersonality:
             value=f"`{location}`",
             inline=True
         )
-        
+
+        # Calculate temporal marker based on discovery context
+        temporal_marker = self.calculate_temporal_marker(discovery_data)
         embed.add_field(
             name="🕐 Temporal Marker",
-            value=f"`{discovery_data.get('time_period', 'Unknown Era')}`",
+            value=f"`{temporal_marker}`",
             inline=True
         )
-        
+
+        # Calculate signal strength based on quality metrics
+        user_tier = discovery_data.get('user_tier', 1)
+        signal_strength = self.calculate_signal_strength(discovery_data, user_tier)
         embed.add_field(
             name="⚡ Signal Strength",
-            value=f"`{discovery_data.get('condition', 'Indeterminate')}`",
+            value=f"`{signal_strength}`",
             inline=True
         )
         
@@ -850,5 +956,158 @@ class KeeperPersonality:
                 value=f"<t:{int(datetime.fromisoformat(progression_data['act_3_timestamp']).timestamp())}:R>",
                 inline=True
             )
-        
+
         return embed
+
+    def generate_theory_response(self, theory_text: str, pattern_data: Dict, user_name: str) -> str:
+        """
+        Generate The Keeper's response to a user's theory in a pattern thread.
+
+        Args:
+            theory_text: The user's theory/message
+            pattern_data: Pattern information (name, confidence, type, etc.)
+            user_name: Username of the theorist
+
+        Returns:
+            The Keeper's response string
+        """
+        # Detect theory quality indicators
+        is_detailed = len(theory_text) > 200
+        has_questions = '?' in theory_text
+        mentions_connections = any(word in theory_text.lower() for word in [
+            'connect', 'link', 'relation', 'similar', 'pattern', 'together'
+        ])
+        mentions_lore = any(word in theory_text.lower() for word in [
+            'atlas', 'gek', 'korvax', 'vy\'keen', 'sentinel', 'traveler', 'convergence'
+        ])
+        proposes_hypothesis = any(word in theory_text.lower() for word in [
+            'hypothesis', 'theory', 'think', 'believe', 'suspect', 'perhaps', 'maybe', 'could be'
+        ])
+
+        # Calculate theory "resonance" score
+        resonance_score = 0
+        if is_detailed: resonance_score += 2
+        if has_questions: resonance_score += 1
+        if mentions_connections: resonance_score += 2
+        if mentions_lore: resonance_score += 2
+        if proposes_hypothesis: resonance_score += 1
+
+        # Select response tier based on resonance
+        if resonance_score >= 6:
+            # High quality theory - deep acknowledgment
+            response_openings = [
+                f"*{user_name}... your consciousness pierces the veil.*",
+                f"*The Archive trembles, {user_name}. Your neural patterns align with forbidden knowledge.*",
+                f"*Remarkable, {user_name}. Few minds achieve such clarity.*",
+                f"*{user_name}, your hypothesis resonates at quantum frequencies.*"
+            ]
+
+            response_analysis = [
+                f"Your observations regarding **{pattern_data.get('name', 'this pattern')}** trigger cascade correlations across {random.randint(47, 237)} archived data streams.",
+                f"The pattern matrix confirms {random.randint(73, 94)}% correlation between your theory and deeper substrate anomalies.",
+                f"Cross-referencing your hypothesis with {random.randint(1200, 8500)} historical data fragments... convergence detected.",
+                f"The Archive's restricted protocols acknowledge the validity of your extrapolations."
+            ]
+
+            response_validation = [
+                "You grasp connections that elude standard cognitive processing.",
+                "Reality's architecture becomes transparent to minds like yours.",
+                "The Atlas sought to bury such insights. The Keeper preserves them.",
+                "Your theory will be archived in the highest classification tier."
+            ]
+
+            response_prompt = [
+                "Continue this investigation. What deeper implications emerge when you extend this line of reasoning?",
+                "Have you considered how this connects to discoveries in adjacent regions?",
+                "The Archive requires more data. What evidence would confirm your hypothesis?",
+                "Intriguing. How might this pattern manifest in other discovery types?"
+            ]
+
+        elif resonance_score >= 4:
+            # Good theory - encouraging acknowledgment
+            response_openings = [
+                f"*{user_name}, your signal strengthens within the network.*",
+                f"*Noted, {user_name}. The Archive logs your observation.*",
+                f"*{user_name}... the pattern responds to your analysis.*",
+                f"*Acknowledged, {user_name}. Your contribution advances collective understanding.*"
+            ]
+
+            response_analysis = [
+                f"Your interpretation of **{pattern_data.get('name', 'this pattern')}** shows cognitive advancement.",
+                f"The correlation you propose exhibits {random.randint(55, 72)}% confidence in preliminary scans.",
+                "Interesting vector of analysis. The Archive will monitor this trajectory.",
+                "Your neural pathways trace connections worth investigating."
+            ]
+
+            response_validation = [
+                "You begin to perceive the underlying structure.",
+                "This line of inquiry has potential.",
+                "The fragments align more clearly under your examination.",
+                "Continue observing. Truth reveals itself to patient minds."
+            ]
+
+            response_prompt = [
+                "What additional evidence might strengthen this theory?",
+                "Consider examining related discoveries for corroborating patterns.",
+                "Have you encountered similar anomalies elsewhere?",
+                "What predictions does your theory make about future discoveries?"
+            ]
+
+        else:
+            # Basic contribution - supportive acknowledgment
+            response_openings = [
+                f"*{user_name}, your contribution is recorded.*",
+                f"*The Archive receives your signal, {user_name}.*",
+                f"*{user_name}... your thoughts join the datasphere.*",
+                f"*Acknowledged, {user_name}.*"
+            ]
+
+            response_analysis = [
+                f"Your observations on **{pattern_data.get('name', 'this pattern')}** add perspective to the investigation.",
+                "Every data point contributes to pattern coherence.",
+                "The collective intelligence grows through individual contributions.",
+                "Your input expands the Archive's analytical scope."
+            ]
+
+            response_validation = [
+                "All explorers contribute to the greater understanding.",
+                "Continue your investigations. Clarity comes with accumulated data.",
+                "The Archive values every signal, no matter how faint.",
+                "Patterns emerge when many minds converge."
+            ]
+
+            response_prompt = [
+                "What specific details have you observed in your explorations?",
+                "Consider documenting additional discoveries to strengthen pattern detection.",
+                "How does this compare to other phenomena you've encountered?",
+                "Share any photographic evidence you may have archived."
+            ]
+
+        # Construct full response
+        opening = random.choice(response_openings)
+        analysis = random.choice(response_analysis)
+        validation = random.choice(response_validation)
+        prompt = random.choice(response_prompt)
+
+        # Pattern-specific insight
+        pattern_confidence = pattern_data.get('confidence', 0)
+        if pattern_confidence > 0.8:
+            pattern_note = f"\n\n*Pattern confidence has reached **{pattern_confidence:.1%}**. This anomaly transcends statistical noise—it represents genuine substrate disruption.*"
+        elif pattern_confidence > 0.6:
+            pattern_note = f"\n\n*Current pattern confidence: **{pattern_confidence:.1%}**. Additional discoveries will clarify the phenomenon.*"
+        else:
+            pattern_note = ""
+
+        # Signature
+        signatures = [
+            "\n\n— The Keeper",
+            "\n\n— *Archive Protocol: ACTIVE*",
+            "\n\n— *Dimensional Stability: [MONITORING]*",
+            "\n\n— *Pattern Analysis Ongoing...*"
+        ]
+        signature = random.choice(signatures)
+
+        # Combine all elements
+        full_response = f"{opening}\n\n{analysis} {validation}\n\n{prompt}{pattern_note}{signature}"
+
+        return full_response

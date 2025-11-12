@@ -1103,8 +1103,115 @@ class CommunityFeatures(commands.Cog):
     
     async def _gather_leaderboard_data(self, guild_id: str) -> Dict:
         """Gather leaderboard data for all categories."""
-        # Placeholder implementation  
-        return {'discoveries': [], 'patterns': [], 'recent': [], 'tiers': []}
+        leaderboard = {
+            'discoveries': [],
+            'patterns': [],
+            'recent': [],
+            'tiers': []
+        }
+
+        try:
+            # Discovery leaderboard - Top explorers by discovery count
+            cursor = await self.db.connection.execute("""
+                SELECT user_id, username, COUNT(*) as count, type as latest_type
+                FROM discoveries
+                WHERE guild_id = ?
+                GROUP BY user_id
+                ORDER BY count DESC
+                LIMIT 10
+            """, (guild_id,))
+
+            rows = await cursor.fetchall()
+            for row in rows:
+                leaderboard['discoveries'].append({
+                    'user_id': row[0],
+                    'username': row[1] or 'Unknown Explorer',
+                    'count': row[2],
+                    'latest_type': row[3] if len(row) > 3 else 'Unknown'
+                })
+
+            # Pattern contribution leaderboard
+            cursor = await self.db.connection.execute("""
+                SELECT user_id, COUNT(DISTINCT pattern_id) as pattern_count
+                FROM pattern_contributions
+                GROUP BY user_id
+                ORDER BY pattern_count DESC
+                LIMIT 10
+            """)
+
+            pattern_rows = await cursor.fetchall()
+            for row in pattern_rows:
+                # Get username from discoveries
+                user_cursor = await self.db.connection.execute(
+                    "SELECT username FROM discoveries WHERE user_id = ? LIMIT 1",
+                    (row[0],)
+                )
+                user_result = await user_cursor.fetchone()
+                username = user_result[0] if user_result else 'Unknown Explorer'
+
+                leaderboard['patterns'].append({
+                    'user_id': row[0],
+                    'username': username,
+                    'count': row[1]
+                })
+
+            # Recent top contributors (last 7 days)
+            week_ago = (datetime.utcnow() - timedelta(days=7)).isoformat()
+            cursor = await self.db.connection.execute("""
+                SELECT user_id, username, COUNT(*) as count
+                FROM discoveries
+                WHERE guild_id = ? AND submission_timestamp >= ?
+                GROUP BY user_id
+                ORDER BY count DESC
+                LIMIT 5
+            """, (guild_id, week_ago))
+
+            recent_rows = await cursor.fetchall()
+            for row in recent_rows:
+                leaderboard['recent'].append({
+                    'user_id': row[0],
+                    'username': row[1] or 'Unknown Explorer',
+                    'count': row[2]
+                })
+
+            # Mystery tier leaderboard - Highest tier users
+            cursor = await self.db.connection.execute("""
+                SELECT user_id, username, COUNT(*) as discoveries,
+                       (SELECT COUNT(DISTINCT pattern_id) FROM pattern_contributions WHERE user_id = discoveries.user_id) as patterns
+                FROM discoveries
+                WHERE guild_id = ?
+                GROUP BY user_id
+                ORDER BY discoveries DESC, patterns DESC
+                LIMIT 10
+            """, (guild_id,))
+
+            tier_rows = await cursor.fetchall()
+            for row in tier_rows:
+                discoveries_count = row[2]
+                patterns_count = row[3] if row[3] else 0
+
+                # Calculate tier based on discoveries + patterns
+                if discoveries_count >= 30 and patterns_count >= 5:
+                    tier = 4
+                elif discoveries_count >= 15 and patterns_count >= 3:
+                    tier = 3
+                elif discoveries_count >= 5 and patterns_count >= 1:
+                    tier = 2
+                else:
+                    tier = 1
+
+                leaderboard['tiers'].append({
+                    'user_id': row[0],
+                    'username': row[1] or 'Unknown Explorer',
+                    'tier': tier,
+                    'discoveries': discoveries_count,
+                    'patterns': patterns_count
+                })
+
+        except Exception as e:
+            logger.error(f"Error gathering leaderboard data: {e}")
+
+        return leaderboard
     
     async def _get_recent_user_discoveries(self, user_id: str, guild_id: str, limit: int) -> List[Dict]:
         """Get user's recent discoveries."""

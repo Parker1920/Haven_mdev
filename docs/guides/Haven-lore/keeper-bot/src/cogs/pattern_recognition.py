@@ -667,6 +667,107 @@ class PatternRecognition(commands.Cog):
             )
             await interaction.followup.send(embed=error_embed)
 
+    @commands.Cog.listener()
+    async def on_message(self, message: discord.Message):
+        """Listen for messages in pattern investigation threads and respond with Keeper personality."""
+        # Ignore bot's own messages
+        if message.author.bot:
+            return
+
+        # Check if message is in a thread
+        if not isinstance(message.channel, discord.Thread):
+            return
+
+        # Check if thread is a pattern investigation thread
+        # Pattern threads have names starting with 🔍 and are created by the bot
+        if not message.channel.name.startswith('🔍'):
+            return
+
+        try:
+            # Get the pattern associated with this thread
+            cursor = await self.db.connection.execute(
+                "SELECT * FROM investigations WHERE thread_id = ?",
+                (str(message.channel.id),)
+            )
+            investigation = await cursor.fetchone()
+
+            if not investigation:
+                # Thread exists but no investigation record found - could be manual thread
+                logger.debug(f"No investigation found for thread {message.channel.id}")
+                return
+
+            investigation_dict = dict(investigation) if investigation else {}
+            pattern_id = investigation_dict.get('pattern_id')
+
+            if not pattern_id:
+                return
+
+            # Get pattern data
+            cursor = await self.db.connection.execute(
+                "SELECT * FROM patterns WHERE id = ?",
+                (pattern_id,)
+            )
+            pattern_row = await cursor.fetchone()
+
+            if not pattern_row:
+                logger.warning(f"Pattern {pattern_id} not found for investigation in thread {message.channel.id}")
+                return
+
+            pattern_data = dict(pattern_row)
+
+            # Parse metadata if it exists
+            if pattern_data.get('metadata'):
+                try:
+                    metadata = json.loads(pattern_data['metadata']) if isinstance(pattern_data['metadata'], str) else pattern_data['metadata']
+                    pattern_data.update(metadata)
+                except json.JSONDecodeError:
+                    logger.warning(f"Could not parse pattern metadata for pattern {pattern_id}")
+
+            # Don't respond to every single message - use probability based on message quality
+            # Short messages (< 50 chars) = 10% chance
+            # Medium messages (50-150 chars) = 30% chance
+            # Long messages (150+ chars) = 80% chance
+            # Messages with keywords always get response
+
+            import random
+            theory_keywords = ['theory', 'hypothesis', 'think', 'believe', 'pattern', 'connect',
+                             'atlas', 'gek', 'korvax', 'vy\'keen', 'why', 'because', 'similar']
+
+            has_keywords = any(keyword in message.content.lower() for keyword in theory_keywords)
+            message_length = len(message.content)
+
+            if has_keywords:
+                should_respond = True
+            elif message_length >= 150:
+                should_respond = random.random() < 0.8
+            elif message_length >= 50:
+                should_respond = random.random() < 0.3
+            else:
+                should_respond = random.random() < 0.1
+
+            if not should_respond:
+                logger.debug(f"Skipping response to short message in thread {message.channel.id}")
+                return
+
+            # Generate theory response using Keeper personality
+            theory_response = self.personality.generate_theory_response(
+                theory_text=message.content,
+                pattern_data=pattern_data,
+                user_name=message.author.display_name
+            )
+
+            # Send response with "typing" indicator for immersion
+            async with message.channel.typing():
+                # Small delay for realism (1-3 seconds)
+                await asyncio.sleep(random.uniform(1.0, 3.0))
+                await message.channel.send(theory_response)
+
+            logger.info(f"✅ Keeper responded to theory in thread '{message.channel.name}' by {message.author.name}")
+
+        except Exception as e:
+            logger.error(f"Error responding to pattern thread message: {e}")
+            # Silently fail - don't want to spam errors in user-facing channels
+
 async def setup(bot):
     """Setup function for the cog."""
     await bot.add_cog(PatternRecognition(bot))

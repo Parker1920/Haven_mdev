@@ -1220,7 +1220,7 @@ renderer.domElement.addEventListener('click', (e) => {
                 const renderDiscoveries = (filterType = 'All') => {
                     let filtered = locationDiscoveries;
                     if (filterType !== 'All') {
-                        filtered = locationDiscoveries.filter(d => d.type === filterType);
+                        filtered = locationDiscoveries.filter(d => (d.type || d.discovery_type) === filterType);
                     }
 
                     let discoveryHtml = `<h3>🔍 Discoveries on ${data.name}</h3>`;
@@ -1247,7 +1247,7 @@ renderer.domElement.addEventListener('click', (e) => {
                     };
 
                     types.forEach(type => {
-                        const count = locationDiscoveries.filter(d => d.type === type).length;
+                        const count = locationDiscoveries.filter(d => (d.type || d.discovery_type) === type).length;
                         if (count > 0) {
                             discoveryHtml += `<option value="${type}">${type} ${typeNames[type]} (${count})</option>`;
                         }
@@ -1262,45 +1262,93 @@ renderer.domElement.addEventListener('click', (e) => {
                         filtered.forEach((disc, idx) => {
                             discoveryHtml += `<div style="background: rgba(0, 206, 209, 0.08); border-left: 3px solid #00CED1; padding: 12px; margin: 10px 0; border-radius: 4px;">`;
 
-                            // Type and mystery tier
+                            // Type and mystery tier (support both field name conventions)
+                            const typeEmoji = disc.type || disc.discovery_type || '🔍';
+                            const typeName = disc.discovery_name || 'Discovery';
                             let tierBadge = '';
                             if (disc.mystery_tier) {
                                 const tierColors = { 1: '#4CAF50', 2: '#2196F3', 3: '#9C27B0', 4: '#F44336' };
                                 tierBadge = `<span style="background: ${tierColors[disc.mystery_tier]}; color: #fff; padding: 2px 8px; border-radius: 10px; font-size: 11px; margin-left: 8px;">Tier ${disc.mystery_tier}</span>`;
                             }
-                            discoveryHtml += `<p style="margin: 0 0 8px 0;"><strong style="color: #00CED1;">${disc.type || '🔍'} ${disc.discovery_type || 'Discovery'}</strong>${tierBadge}</p>`;
+                            discoveryHtml += `<p style="margin: 0 0 8px 0;"><strong style="color: #00CED1;">${typeEmoji} ${typeName}</strong>${tierBadge}</p>`;
 
                             // Description
                             if (disc.description) {
                                 discoveryHtml += `<p style="margin: 6px 0; color: #ddd;">${disc.description}</p>`;
                             }
 
-                            // Type-specific details
+                            // Type-specific details - COMPLETE FIELD LIST
                             const typeFields = {
-                                '🦴': ['species_type', 'size_scale', 'preservation_quality'],
-                                '📜': ['log_type', 'language', 'condition'],
-                                '🏛️': ['structure_type', 'age_estimate', 'construction_material'],
-                                '⚙️': ['tech_category', 'functionality', 'power_source'],
-                                '🦗': ['species_name', 'behavior', 'rarity'],
-                                '💎': ['mineral_type', 'rarity', 'quantity_estimate'],
-                                '🚀': ['ship_class', 'ship_condition', 'salvageable_tech'],
-                                '⚡': ['hazard_type', 'severity', 'frequency'],
-                                '🆕': ['update_category', 'availability'],
-                                '📖': ['lore_category', 'narrative_arc']
+                                '🦴': ['species_type', 'size_scale', 'preservation_quality', 'estimated_age'],
+                                '🏛️': ['structure_type', 'architectural_style', 'structural_integrity', 'purpose_function'],
+                                '⚙️': ['tech_category', 'operational_status', 'power_source', 'reverse_engineering'],
+                                '🦗': ['species_name', 'behavioral_notes', 'habitat_biome', 'threat_level'],
+                                '💎': ['resource_type', 'deposit_richness', 'extraction_method', 'economic_value'],
+                                '🚀': ['ship_class', 'hull_condition', 'salvageable_tech', 'pilot_status'],
+                                '⚡': ['hazard_type', 'severity_level', 'duration_frequency', 'protection_required'],
+                                '🆕': ['update_name', 'feature_category', 'gameplay_impact', 'first_impressions'],
+                                '📜': ['key_excerpt', 'language_status', 'completeness', 'author_origin'],
+                                '📖': ['story_type', 'lore_connections', 'creative_elements', 'collaborative_work']
                             };
 
-                            const fields = typeFields[disc.type] || [];
+                            // Parse metadata if it exists (JSON string containing type-specific fields)
+                            let metadata = {};
+                            if (disc.metadata) {
+                                try {
+                                    metadata = typeof disc.metadata === 'string' ? JSON.parse(disc.metadata) : disc.metadata;
+                                } catch (e) {
+                                    console.warn('Failed to parse discovery metadata:', e);
+                                }
+                            }
+
+                            const fields = typeFields[typeEmoji] || [];
                             if (fields.length > 0) {
                                 let detailsHtml = '';
                                 fields.forEach(field => {
-                                    if (disc[field]) {
+                                    // Check both direct property and metadata
+                                    const value = disc[field] || metadata[field];
+                                    if (value) {
                                         const label = field.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-                                        detailsHtml += `<span style="color: #888; font-size: 13px;"><strong>${label}:</strong> ${disc[field]} &nbsp;</span>`;
+                                        detailsHtml += `<div style="margin: 4px 0;"><span style="color: #00CED1; font-size: 12px; font-weight: bold;">${label}:</span> <span style="color: #ddd; font-size: 13px;">${value}</span></div>`;
                                     }
                                 });
                                 if (detailsHtml) {
-                                    discoveryHtml += `<p style="margin: 6px 0; font-size: 13px;">${detailsHtml}</p>`;
+                                    discoveryHtml += `<div style="margin: 10px 0; padding: 8px; background: rgba(0, 0, 0, 0.3); border-radius: 4px;">${detailsHtml}</div>`;
                                 }
+                            }
+
+                            // Show evidence photo if available (support both field names)
+                            const photoUrl = disc.evidence_url || disc.photo_url;
+                            if (photoUrl) {
+                                discoveryHtml += `<div style="margin: 12px 0;">`;
+                                discoveryHtml += `<p style="margin: 0 0 6px 0; color: #00CED1; font-weight: bold; font-size: 13px;">📸 Evidence Photo:</p>`;
+                                discoveryHtml += `<a href="${photoUrl}" target="_blank" style="display: block;">`;
+                                discoveryHtml += `<img src="${photoUrl}" style="max-width: 100%; max-height: 300px; border: 2px solid #00CED1; border-radius: 6px; cursor: pointer; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform='scale(1)'">`;
+                                discoveryHtml += `</a>`;
+                                discoveryHtml += `<p style="margin: 4px 0 0 0; font-size: 11px; color: #888; font-style: italic;">Click to view full size</p>`;
+                                discoveryHtml += `</div>`;
+                            }
+
+                            // Show coordinates if available
+                            if (disc.coordinates) {
+                                discoveryHtml += `<p style="margin: 6px 0; font-size: 13px;"><span style="color: #00CED1; font-weight: bold;">📍 Coordinates:</span> <code style="background: rgba(0, 206, 209, 0.15); padding: 2px 6px; border-radius: 3px; font-family: monospace; color: #0ff;">${disc.coordinates}</code></p>`;
+                            }
+
+                            // Show location details
+                            if (disc.planet_name || disc.system_name || disc.galaxy_name) {
+                                let locationParts = [];
+                                if (disc.planet_name) locationParts.push(disc.planet_name);
+                                if (disc.system_name) locationParts.push(disc.system_name);
+                                if (disc.galaxy_name) locationParts.push(disc.galaxy_name);
+                                discoveryHtml += `<p style="margin: 6px 0; font-size: 13px; color: #aaa;">🌍 <strong>Location:</strong> ${locationParts.join(' → ')}</p>`;
+                            }
+
+                            // Show time period and condition (from smart analysis)
+                            if (disc.time_period && disc.time_period !== 'Unknown Era') {
+                                discoveryHtml += `<p style="margin: 6px 0; font-size: 13px;"><span style="color: #00CED1; font-weight: bold;">🕐 Temporal Marker:</span> ${disc.time_period}</p>`;
+                            }
+                            if (disc.condition && disc.condition !== 'Indeterminate') {
+                                discoveryHtml += `<p style="margin: 6px 0; font-size: 13px;"><span style="color: #00CED1; font-weight: bold;">⚡ Signal Strength:</span> ${disc.condition}</p>`;
                             }
 
                             // Significance
