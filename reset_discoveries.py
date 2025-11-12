@@ -28,23 +28,31 @@ def reset_discoveries(db_path):
             return
 
         # Check current state
-        cursor.execute("SELECT COUNT(*) as count FROM systems")
-        system_count = cursor.fetchone()[0]
-
-        cursor.execute("SELECT COUNT(*) as count FROM planets")
-        planet_count = cursor.fetchone()[0]
-
-        cursor.execute("SELECT COUNT(*) as count FROM moons")
-        moon_count = cursor.fetchone()[0]
-
         cursor.execute("SELECT COUNT(*) as count FROM discoveries")
         discovery_count = cursor.fetchone()[0]
 
-        print(f"\nCurrent state:")
-        print(f"  Systems: {system_count}")
-        print(f"  Planets: {planet_count}")
-        print(f"  Moons: {moon_count}")
-        print(f"  Discoveries: {discovery_count}")
+        # Check if this is a Haven database (has systems table) or keeper database
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='systems'")
+        has_systems_table = cursor.fetchone() is not None
+
+        if has_systems_table:
+            cursor.execute("SELECT COUNT(*) as count FROM systems")
+            system_count = cursor.fetchone()[0]
+
+            cursor.execute("SELECT COUNT(*) as count FROM planets")
+            planet_count = cursor.fetchone()[0]
+
+            cursor.execute("SELECT COUNT(*) as count FROM moons")
+            moon_count = cursor.fetchone()[0]
+
+            print(f"\nCurrent state:")
+            print(f"  Systems: {system_count}")
+            print(f"  Planets: {planet_count}")
+            print(f"  Moons: {moon_count}")
+            print(f"  Discoveries: {discovery_count}")
+        else:
+            print(f"\nCurrent state:")
+            print(f"  Discoveries: {discovery_count}")
 
         if discovery_count == 0:
             print("\n✓ No discoveries to delete")
@@ -60,28 +68,33 @@ def reset_discoveries(db_path):
         print(f"\n✓ Deleted {deleted} discoveries")
 
         # Verify final state
-        cursor.execute("SELECT COUNT(*) as count FROM systems")
-        final_systems = cursor.fetchone()[0]
-
-        cursor.execute("SELECT COUNT(*) as count FROM planets")
-        final_planets = cursor.fetchone()[0]
-
-        cursor.execute("SELECT COUNT(*) as count FROM moons")
-        final_moons = cursor.fetchone()[0]
-
         cursor.execute("SELECT COUNT(*) as count FROM discoveries")
         final_discoveries = cursor.fetchone()[0]
 
-        print(f"\nFinal state:")
-        print(f"  Systems: {final_systems}")
-        print(f"  Planets: {final_planets}")
-        print(f"  Moons: {final_moons}")
-        print(f"  Discoveries: {final_discoveries}")
+        if has_systems_table:
+            cursor.execute("SELECT COUNT(*) as count FROM systems")
+            final_systems = cursor.fetchone()[0]
 
-        if final_systems == system_count and final_planets == planet_count and final_moons == moon_count:
-            print("\n✓ Systems, planets, and moons remain intact")
+            cursor.execute("SELECT COUNT(*) as count FROM planets")
+            final_planets = cursor.fetchone()[0]
+
+            cursor.execute("SELECT COUNT(*) as count FROM moons")
+            final_moons = cursor.fetchone()[0]
+
+            print(f"\nFinal state:")
+            print(f"  Systems: {final_systems}")
+            print(f"  Planets: {final_planets}")
+            print(f"  Moons: {final_moons}")
+            print(f"  Discoveries: {final_discoveries}")
+
+            if final_systems == system_count and final_planets == planet_count and final_moons == moon_count:
+                print("\n✓ Systems, planets, and moons remain intact")
+            else:
+                print("\n⚠ WARNING: System/planet/moon counts changed!")
         else:
-            print("\n⚠ WARNING: System/planet/moon counts changed!")
+            print(f"\nFinal state:")
+            print(f"  Discoveries: {final_discoveries}")
+            print("\n✓ Keeper database discoveries reset")
 
     except Exception as e:
         print(f"\n✗ Error: {e}")
@@ -91,9 +104,12 @@ def reset_discoveries(db_path):
         conn.close()
 
 if __name__ == "__main__":
-    # Reset both databases
+    # Reset both Haven databases
     reset_discoveries('data/VH-Database.db')
     reset_discoveries('data/haven_load_test.db')
+
+    # Reset Discord bot's keeper database
+    reset_discoveries('docs/guides/Haven-lore/keeper-bot/data/keeper.db')
 
     print(f"\n{'='*60}")
     print("✓ Discovery reset complete!")

@@ -211,14 +211,18 @@ class DiscoveryTypeSelect(discord.ui.Select):
 
 class PhotoUploadView(discord.ui.View):
     """View for handling photo uploads."""
-    
-    def __init__(self, discovery_id: int):
+
+    def __init__(self, discovery_id: int, cog):
         super().__init__(timeout=300)
         self.discovery_id = discovery_id
-    
+        self.cog = cog
+
     @discord.ui.button(label="📸 Upload Evidence Photo", style=discord.ButtonStyle.secondary)
     async def upload_photo(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Handle photo upload."""
+        # Register this user as waiting to upload a photo
+        self.cog.pending_photo_uploads[interaction.user.id] = self.discovery_id
+
         embed = discord.Embed(
             title="📸 Evidence Upload",
             description="Please attach an image to your next message in this channel.\n\n*The Keeper will process and archive the evidence.*",
@@ -228,7 +232,7 @@ class PhotoUploadView(discord.ui.View):
 
 class EnhancedDiscoverySystem(commands.Cog):
     """Enhanced discovery system with Haven integration."""
-    
+
     def __init__(self, bot):
         self.bot = bot
         self.db: KeeperDatabase = bot.db
@@ -237,7 +241,10 @@ class EnhancedDiscoverySystem(commands.Cog):
         self.haven = HavenIntegration()
         self.flow_handler = DiscoveryFlowHandler(self, bot.config)
         self.channel_config = ChannelConfig(bot)
-        
+
+        # Track users waiting to upload evidence photos
+        self.pending_photo_uploads = {}  # {user_id: discovery_id}
+
         # Start Haven data loading
         self.bot.loop.create_task(self._initialize_haven())
     
@@ -248,7 +255,63 @@ class EnhancedDiscoverySystem(commands.Cog):
             logger.info("✅ Haven integration initialized")
         else:
             logger.warning("⚠️ Haven integration failed - bot will work in standalone mode")
-    
+
+    @commands.Cog.listener()
+    async def on_message(self, message: discord.Message):
+        """Listen for photo uploads from users who clicked the upload button."""
+        # Ignore bot messages
+        if message.author.bot:
+            return
+
+        # Check if this user is waiting to upload a photo
+        if message.author.id not in self.pending_photo_uploads:
+            return
+
+        # Check if message has attachments
+        if not message.attachments:
+            return
+
+        # Get the discovery ID this photo is for
+        discovery_id = self.pending_photo_uploads[message.author.id]
+
+        # Get the first image attachment
+        photo_url = None
+        for attachment in message.attachments:
+            if attachment.content_type and attachment.content_type.startswith('image/'):
+                photo_url = attachment.url
+                break
+
+        if not photo_url:
+            # No image found, inform user
+            await message.reply("⚠️ Please attach an image file (PNG, JPG, etc.)")
+            return
+
+        try:
+            # Update the discovery with the photo URL
+            await self.db.connection.execute(
+                "UPDATE discoveries SET evidence_url = ? WHERE id = ?",
+                (photo_url, discovery_id)
+            )
+            await self.db.connection.commit()
+
+            # Remove user from pending uploads
+            del self.pending_photo_uploads[message.author.id]
+
+            # Confirm to user
+            embed = discord.Embed(
+                title="✅ Evidence Photo Archived",
+                description=f"*Your evidence photo has been attached to Discovery #{discovery_id}*\n\nThe Keeper has preserved this visual record.",
+                color=0x00ff00
+            )
+            embed.set_image(url=photo_url)
+            await message.reply(embed=embed)
+
+            logger.info(f"Photo uploaded for discovery {discovery_id} by user {message.author.id}")
+
+        except Exception as e:
+            logger.error(f"Error saving photo for discovery {discovery_id}: {e}")
+            await message.reply("❌ Error archiving photo. Please try again later.")
+
     @app_commands.command(
         name="discovery-report",
         description="🔍 Report a discovery to The Keeper's Archive (Haven-Enhanced)"
@@ -414,7 +477,7 @@ class EnhancedDiscoverySystem(commands.Cog):
             )
             
             # Add photo upload option
-            photo_view = PhotoUploadView(discovery_id)
+            photo_view = PhotoUploadView(discovery_id, self)
             await interaction.followup.send(embed=confirm_embed, view=photo_view, ephemeral=True)
             
             # Post analysis to archive channel

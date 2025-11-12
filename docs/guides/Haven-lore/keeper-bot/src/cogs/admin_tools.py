@@ -251,25 +251,25 @@ class AdminTools(commands.Cog):
             # Basic stats
             embed.add_field(
                 name="🔍 Discoveries",
-                value=f"**Total:** {stats['discoveries']['total']}\\n**This Week:** {stats['discoveries']['week']}",
+                value=f"**Total:** {stats['discoveries']['total']}\n**This Week:** {stats['discoveries']['week']}",
                 inline=True
             )
-            
+
             embed.add_field(
                 name="🌀 Patterns",
-                value=f"**Active:** {stats['patterns']['active']}\\n**Total:** {stats['patterns']['total']}",
+                value=f"**Active:** {stats['patterns']['active']}\n**Total:** {stats['patterns']['total']}",
                 inline=True
             )
-            
+
             embed.add_field(
                 name="👥 Explorers",
-                value=f"**Active:** {stats['users']['active']}\\n**Total:** {stats['users']['total']}",
+                value=f"**Active:** {stats['users']['active']}\n**Total:** {stats['users']['total']}",
                 inline=True
             )
-            
+
             # Recent activity
             if stats['recent_activity']:
-                activity_text = "\\n".join(stats['recent_activity'][:5])
+                activity_text = "\n".join(stats['recent_activity'][:5])
                 embed.add_field(
                     name="📈 Recent Activity",
                     value=activity_text,
