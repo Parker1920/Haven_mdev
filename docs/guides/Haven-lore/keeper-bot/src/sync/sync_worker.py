@@ -12,7 +12,11 @@ from pathlib import Path
 
 from database.keeper_db import KeeperDatabase
 from database.sync_queue import SyncQueueManager
-from core.haven_integration import HavenIntegration
+# Use HTTP-enabled version for Railway compatibility
+try:
+    from core.haven_integration_http import HavenIntegrationHTTP as HavenIntegration
+except ImportError:
+    from core.haven_integration import HavenIntegration
 
 logger = logging.getLogger('keeper.sync_worker')
 
@@ -131,9 +135,9 @@ class SyncWorker:
         # Prepare discovery data for VH-Database format
         discovery_data = await self._prepare_discovery_for_haven(discovery)
 
-        # Write to VH-Database.db
+        # Write to VH-Database.db (use await for async method)
         try:
-            haven_id = self.haven.write_discovery_to_database(discovery_data)
+            haven_id = await self.haven.write_discovery_to_database(discovery_data)
 
             if haven_id:
                 # Success!

@@ -13,7 +13,11 @@ import json
 
 from core.keeper_personality import KeeperPersonality
 from database.keeper_db import KeeperDatabase
-from core.haven_integration import HavenIntegration
+# Use HTTP-enabled version for Railway compatibility
+try:
+    from core.haven_integration_http import HavenIntegrationHTTP as HavenIntegration
+except ImportError:
+    from core.haven_integration import HavenIntegration
 from core.channel_config import ChannelConfig
 from cogs.discovery_modals import get_modal_for_type
 
