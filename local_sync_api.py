@@ -20,6 +20,10 @@ from datetime import datetime
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from pathlib import Path
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(
@@ -66,7 +70,7 @@ def health_check():
     return jsonify({
         'status': 'healthy',
         'database_accessible': os.path.exists(VH_DATABASE_PATH),
-        'timestamp': datetime.utcnow().isoformat()
+        'timestamp': datetime.now(datetime.UTC).isoformat()
     })
 
 
