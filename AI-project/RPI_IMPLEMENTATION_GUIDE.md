@@ -1,0 +1,3 @@
+# RPI Implementation Guide
+
+...existing content from original file...
