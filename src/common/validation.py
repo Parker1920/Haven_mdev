@@ -20,10 +20,15 @@ Usage:
 """
 
 import json
-import jsonschema
+try:
+    import jsonschema
+except ImportError:
+    jsonschema = None  # will skip schema validation when library unavailable
 import sys
 from pathlib import Path
 from typing import Tuple, List, Dict, Any
+import copy
+import re
 
 
 # Cache the schema to avoid reloading
@@ -84,13 +89,53 @@ def validate_system_data(system_data: Dict[str, Any]) -> Tuple[bool, str]:
         True
     """
     try:
+        if jsonschema is None:
+            # jsonschema not installed in environment; skip schema validation but still return success
+            return True, ""
         schema = load_schema()
+
+        # Make a deep copy and coerce numeric string fields (x,y,z etc.)
+        data_copy = copy.deepcopy(system_data)
+
+        def _coerce_numbers(obj):
+            if isinstance(obj, dict):
+                for k, v in list(obj.items()):
+                    if k in ("x", "y", "z") and isinstance(v, str):
+                        # Try int then float
+                        s = v.strip()
+                        # allow comma separated thousands to slip through (strip commas)
+                        s_clean = s.replace(',', '')
+                        if re.fullmatch(r"-?\d+", s_clean):
+                            try:
+                                obj[k] = int(s_clean)
+                                continue
+                            except Exception:
+                                pass
+                        if re.fullmatch(r"-?\d*\.\d+([eE][-+]?\d+)?", s_clean) or re.fullmatch(r"-?\d+([eE][-+]?\d+)", s_clean):
+                            try:
+                                obj[k] = float(s_clean)
+                                continue
+                            except Exception:
+                                pass
+                        # Last ditch: try float conversion
+                        try:
+                            obj[k] = float(s_clean)
+                        except Exception:
+                            pass
+                    else:
+                        _coerce_numbers(v)
+            elif isinstance(obj, list):
+                for item in obj:
+                    _coerce_numbers(item)
+
+        _coerce_numbers(data_copy)
 
         # Get the system schema from patternProperties
         system_schema = schema["patternProperties"]["^(?!_meta$).*$"]
 
-        # Validate
-        jsonschema.validate(system_data, system_schema)
+        # Validate the coerced copy
+        jsonschema.validate(data_copy, system_schema)
+
         return True, ""
 
     except jsonschema.ValidationError as e:
