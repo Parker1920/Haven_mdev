@@ -1,7 +1,7 @@
 """
 JSON to SQLite Migration Script
 
-Migrates data from data.json to SQLite database (haven.db).
+Migrates data from data.json to SQLite database (VH-Database.db).
 This is a one-time migration for transitioning from JSON to database backend.
 
 Usage:
@@ -9,7 +9,7 @@ Usage:
 
 Options:
     --json-path: Path to source JSON file (default: data/data.json)
-    --db-path: Path to destination database (default: data/haven.db)
+    --db-path: Path to destination database (default: data/VH-Database.db)
     --backup: Create backup of existing database (default: True)
     --verify: Verify migration after completion (default: True)
 """
@@ -19,47 +19,22 @@ import os
 from pathlib import Path
 from datetime import datetime
 import argparse
-import shutil
-
-# Set UTF-8 encoding for Windows console
-if sys.platform == 'win32':
-    try:
-        sys.stdout.reconfigure(encoding='utf-8')
-    except:
-        pass
-
 # Add parent directory to path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+"""
+ARCHIVED: json_to_sqlite.py
 
-from src.common.database import HavenDatabase
-
-
-class MigrationStats:
-    """Track migration statistics"""
-    def __init__(self):
-        self.systems_total = 0
-        self.systems_migrated = 0
-        self.systems_failed = 0
-        self.planets_migrated = 0
-        self.moons_migrated = 0
-        self.stations_migrated = 0
-        self.errors = []
-
-    def __str__(self):
-        return f"""
-Migration Statistics:
-  Systems: {self.systems_migrated}/{self.systems_total} migrated ({self.systems_failed} failed)
-  Planets: {self.planets_migrated}
-  Moons: {self.moons_migrated}
-  Space Stations: {self.stations_migrated}
-  Errors: {len(self.errors)}
+One-time migration tool for converting JSON exports to an SQLite database.
+This script has been archived and is no longer part of the active runtime.
+The original script is available at 'Archive-Dump/src/migration/json_to_sqlite.py'.
 """
 
+def main():
+    raise NotImplementedError(
+        "The JSON to SQLite migration tool has been archived. See Archive-Dump/src/migration/json_to_sqlite.py"
+    )
 
-class JSONToSQLiteMigrator:
-    """Handles migration from JSON to SQLite database"""
-
-    def __init__(self, json_path: str, db_path: str):
+if __name__ == '__main__':
+    main()
         """
         Initialize migrator
 
@@ -338,7 +313,12 @@ def main():
     parser = argparse.ArgumentParser(description="Migrate Haven data from JSON to SQLite")
     parser.add_argument('--json-path', default='data/data.json',
                        help='Path to source JSON file')
-    parser.add_argument('--db-path', default='data/haven.db',
+    try:
+        from src.common.paths import database_path
+        default_db = str(database_path())
+    except Exception:
+        default_db = 'data/VH-Database.db'
+    parser.add_argument('--db-path', default=default_db,
                        help='Path to destination database')
     parser.add_argument('--no-backup', action='store_true',
                        help='Skip backup of existing database')

@@ -1,9 +1,7 @@
 """
-Migration module for Haven data format conversions
+Migration module for Haven data conversions.
 
-Provides tools for migrating data between different storage backends:
-- JSON to SQLite (json_to_sqlite.py)
-- JSON import for public EXE exports (import_json.py)
+NOTE: JSON migration helpers have been archived in favor of database-only workflows.
 """
 
-__all__ = ['json_to_sqlite', 'import_json']
+__all__ = []

@@ -1,151 +1,15 @@
+
 """
-Haven System Entry - Two-Page Wizard with Planet/Moon Editors
-Complete star system entry with nested planets and moons
+Archived System Entry Wizard (desktop UI)
+
+This file was moved to Archive-Dump/legacy_desktop_20251116/src/system_entry_wizard.py on 2025-11-16.
+Use the web-based system entry in `Haven-UI` instead.
 """
 
-import json
-import shutil
-from pathlib import Path
-from datetime import datetime
-import subprocess
-import customtkinter as ctk
-from tkinter import messagebox, StringVar, filedialog
-import threading
-import time
-import uuid
-import logging
-import sys
-from logging.handlers import RotatingFileHandler
+__archived__ = True
 
-# Theme setup
-ctk.set_appearance_mode("dark")
-ctk.set_default_color_theme("blue")
-
-from common.paths import data_path, logs_dir, project_root
-from common.file_lock import FileLock
-from common.validation import validate_system_data, validate_coordinates
-import os
-
-# Check if running in User Edition mode
-IS_USER_EDITION = os.environ.get('HAVEN_USER_EDITION') == '1'
-USER_DATA_PATH = os.environ.get('HAVEN_DATA_PATH')  # Path to user's data file
-
-# Phase 3: Database integration imports
-# Ensure project root is in sys.path so config/ can be imported
-_proj_root = project_root()
-if str(_proj_root) not in sys.path:
-    sys.path.insert(0, str(_proj_root))
-
-from config.settings import (
-    USE_DATABASE, get_data_provider, get_current_backend,
-    SHOW_BACKEND_STATUS, SHOW_SYSTEM_COUNT, DATABASE_PATH
-)
-from src.common.database import HavenDatabase
-
-# Settings
-SETTINGS_FILE = project_root() / "settings.json"
-
-def load_settings():
-    try:
-        if SETTINGS_FILE.exists():
-            with open(SETTINGS_FILE, 'r', encoding='utf-8') as f:
-                return json.load(f)
-    except Exception:
-        logging.exception("Failed to load settings")
-    return {"theme": "Dark"}
-
-def save_settings(data: dict):
-    try:
-        with open(SETTINGS_FILE, 'w', encoding='utf-8') as f:
-            json.dump(data, f, indent=2)
-    except Exception:
-        logging.exception("Failed to save settings")
-
-# Apply saved theme
-_settings = load_settings()
-_theme = _settings.get("theme", "Dark")
-THEMES = {"Dark": ("dark", "blue"), "Light": ("light", "blue"), "Cosmic": ("dark", "green"), "Haven (Cyan)": ("dark", "blue")}
-if _theme in THEMES:
-    mode, color = THEMES[_theme]
-    ctk.set_appearance_mode(mode)
-    ctk.set_default_color_theme(color)
-
-def _load_theme_colors():
-    try:
-        theme_path = project_root() / 'themes' / 'haven_theme.json'
-        if theme_path.exists():
-            obj = json.loads(theme_path.read_text(encoding='utf-8'))
-            colors = obj.get('colors', {})
-            return {
-                'bg_dark': colors.get('bg_dark', '#0a0e27'),
-                'bg_card': colors.get('bg_card', '#141b3d'),
-                'accent_cyan': colors.get('accent_cyan', '#00d9ff'),
-                'accent_purple': colors.get('accent_purple', '#9d4edd'),
-                'accent_pink': colors.get('accent_pink', '#ff006e'),
-                'text_primary': colors.get('text_primary', '#ffffff'),
-                'text_secondary': colors.get('text_secondary', '#8892b0'),
-                'success': colors.get('success', '#00ff88'),
-                'warning': colors.get('warning', '#ffb703'),
-                'error': colors.get('error', '#ff006e'),
-                'glass': colors.get('glass', '#1a2342'),
-                'glow': colors.get('glow', '#00ffff'),
-            }
-    except Exception:
-        pass
-    return {
-        'bg_dark': '#0a0e27',
-        'bg_card': '#141b3d',
-        'accent_cyan': '#00d9ff',
-        'accent_purple': '#9d4edd',
-        'accent_pink': '#ff006e',
-        'text_primary': '#ffffff',
-        'text_secondary': '#8892b0',
-        'success': '#00ff88',
-        'warning': '#ffb703',
-        'error': '#ff006e',
-        'glass': '#1a2342',
-        'glow': '#00ffff'
-    }
-
-# Color palette
-COLORS = _load_theme_colors()
-
-# Logging setup
-def _setup_logging():
-    logger = logging.getLogger()
-    if logger.handlers:
-        return
-    logger.setLevel(logging.INFO)
-    fmt = logging.Formatter('[%(asctime)s] %(levelname)s: %(message)s')
-    sh = logging.StreamHandler(sys.stdout)
-    sh.setFormatter(fmt)
-    logger.addHandler(sh)
-    try:
-        logs_dir().mkdir(exist_ok=True)
-        ts = datetime.now().strftime('%Y-%m-%d')
-        fh = RotatingFileHandler(logs_dir() / f'gui-{ts}.log', maxBytes=2_000_000, backupCount=5, encoding='utf-8')
-        fh.setFormatter(fmt)
-        logger.addHandler(fh)
-    except Exception:
-        pass
-
-_setup_logging()
-
-sys.excepthook = lambda exc_type, exc, tb: logging.exception("Uncaught exception", exc_info=(exc_type, exc, tb))
-
-
-class GlassCard(ctk.CTkFrame):
-    """Glassmorphic card"""
-    def __init__(self, parent, title="", **kwargs):
-        super().__init__(parent, fg_color=(COLORS['glass'], COLORS['bg_card']), corner_radius=16,
-                         border_width=1, border_color=(COLORS['accent_cyan'], COLORS['accent_cyan']), **kwargs)
-        if title:
-            self.title_label = ctk.CTkLabel(self, text=title, font=ctk.CTkFont(family="Segoe UI", size=18, weight="bold"),
-                                            text_color=COLORS['accent_cyan'])
-            self.title_label.pack(pady=(16, 12), padx=20, anchor="w")
-        self.bind("<Enter>", lambda e: self.configure(border_color=COLORS['glow']))
-        self.bind("<Leave>", lambda e: self.configure(border_color=COLORS['accent_cyan']))
-
+def info():
+    return "The System Entry Wizard (desktop) has been archived. Use Haven-UI web system entry instead."
 
 class ModernEntry(ctk.CTkFrame):
     """Entry with validation"""
@@ -389,8 +253,8 @@ class PlanetMoonEditor(ctk.CTkToplevel):
             return
         try:
             file_path = Path(file)
-            photos_dir = project_root() / 'photos'
-            photos_dir.mkdir(parents=True, exist_ok=True)
+            from src.common.paths import photos_dir as _photos_dir_fn
+            photos_dir = _photos_dir_fn()
             
             # Copy to photos/
             dest = photos_dir / file_path.name
@@ -611,7 +475,7 @@ class SystemEntryWizard(ctk.CTk):
         self.planets = []
         self.space_station = None  # Space station data
         self.current_page = 1
-        self.data_source = ctk.StringVar(value='production')  # Data source: production, testing, load_test
+        self.data_source = ctk.StringVar(value='production')  # Data source: production, testing
 
         # Phase 3: Initialize data provider
         self.data_provider = None

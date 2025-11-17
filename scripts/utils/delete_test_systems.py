@@ -6,11 +6,16 @@ Deletes associated planets and moons via CASCADE
 
 import sqlite3
 from pathlib import Path
+try:
+    from src.common.paths import database_path
+    DB_PATH = Path(database_path())
+except Exception:
+    DB_PATH = Path('data/VH-Database.db')
 
 def delete_test_systems():
     """Delete Alpha, W, and Zebungo ultra systems"""
 
-    db_path = Path('data/VH-Database.db')
+    db_path = DB_PATH
 
     # Systems to KEEP
     keep_systems = ['Tenex[VH]', 'The Diamond In The Rough[VH]']

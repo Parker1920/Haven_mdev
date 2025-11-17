@@ -35,10 +35,9 @@ def test_control_room_ui():
     
     print("\n⚙️ ADVANCED TOOLS (bottom of sidebar):")
     print("  □ 🔧 Update Dependencies button")
-    print("  □ 📦 Export App (EXE/.app) button")
     print("  □ 🧪 System Test button")
     print("  □ 📊 Database Statistics button (if database mode)")
-    print("  □ 🔄 Sync Data (JSON ↔ DB) button")
+    print("  □ 🔒 Export/App Packaging (ARCHIVED) — use build scripts instead")
     
     print("\n🚀 QUICK ACTIONS:")
     print("  □ Generate Map button")
@@ -162,7 +161,7 @@ def test_advanced_features():
     print("   □ Check control-room-2025-11-05.log for:")
     print("      - 'Using DATABASE data provider'")
     print("      - 'Data provider initialized: database'")
-    print("      - 'Data sync OK: JSON and database both have X systems'")
+    print("      - 'Using DATABASE data provider' and 'Data provider initialized: database' in logs")
     
     print("\n3. SYSTEM TEST:")
     print("   □ Click 'System Test' button")

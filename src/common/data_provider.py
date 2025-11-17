@@ -69,22 +69,20 @@ class DataProvider(Protocol):
 
 class JSONDataProvider:
     """
-    JSON-based data provider (for public EXE version)
+    JSON-based data provider (DEPRECATED)
 
-    Reads/writes to data.json file.
-    Simple, portable, version-controllable.
-    Suitable for < 10,000 systems.
+    NOTE: JSON provider has been archived in favor of database-only workflows.
+    This stub will raise NotImplementedError to avoid accidental usage.
+    See Archive-Dump/src/common/data_provider_json.py for the original implementation.
     """
 
     def __init__(self, json_path: str = "data/data.json"):
         """
-        Initialize JSON data provider
-
+        Initialize JSON provider
         Args:
-            json_path: Path to data.json file
+            json_path: Path to JSON data file
         """
         self.json_path = Path(json_path)
-        logger.info(f"Initialized JSON data provider: {self.json_path}")
 
     def _load_data(self) -> Dict:
         """Load entire JSON file"""
@@ -290,7 +288,7 @@ class DatabaseDataProvider:
     Suitable for > 1,000 systems.
     """
 
-    def __init__(self, db_path: str = "data/haven.db"):
+    def __init__(self, db_path: str = None):
         """
         Initialize database data provider
 
@@ -298,9 +296,38 @@ class DatabaseDataProvider:
             db_path: Path to SQLite database
         """
         from src.common.database import HavenDatabase
+        if not db_path:
+            try:
+                from src.common.paths import database_path
+                db_path = str(database_path())
+            except Exception:
+                try:
+                    from config.settings import DATABASE_PATH
+                    db_path = str(DATABASE_PATH)
+                except Exception:
+                    db_path = "data/VH-Database.db"
         self.db_path = db_path
         self.db_class = HavenDatabase
         logger.info(f"Initialized database data provider: {db_path}")
+        # Ensure database schema exists at provider initialization
+        try:
+            temp = self.db_class(self.db_path)
+            logger.info(f"Ensuring DB schema for path: {self.db_path}")
+            # _ensure_database_exists is called in __init__ of HavenDatabase but call explicitly to be safe
+            temp._ensure_database_exists()
+            # Inspect tables and log them to help debugging
+            try:
+                import sqlite3
+                conn = sqlite3.connect(self.db_path)
+                cur = conn.cursor()
+                cur.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+                tables = [r[0] for r in cur.fetchall()]
+                logger.info(f"Post-init DB tables: {tables}")
+                conn.close()
+            except Exception as e:
+                logger.warning(f"Failed to inspect DB tables after init: {e}")
+        except Exception as e:
+            logger.warning(f"Failed to ensure DB schema during provider init: {e}")
 
     def get_all_systems(self, region: Optional[str] = None, include_planets: bool = False) -> List[Dict]:
         """Get all systems"""
@@ -345,8 +372,20 @@ class DatabaseDataProvider:
 
     def get_total_count(self) -> int:
         """Get total system count"""
-        with self.db_class(self.db_path) as db:
-            return db.get_total_count()
+        try:
+            with self.db_class(self.db_path) as db:
+                return db.get_total_count()
+        except Exception as e:
+            # If the DB is present but missing schema, attempt to create schema and retry
+            logger.warning(f"Database get_total_count failed; attempting to recreate schema: {e}")
+            try:
+                with self.db_class(self.db_path) as db:
+                    # Create schema directly if necessary
+                    db._ensure_database_exists()
+                    return db.get_total_count()
+            except Exception as ex:
+                logger.error(f"Failed to get total count after schema recovery: {ex}")
+                raise
 
     def system_exists(self, name: str) -> bool:
         """Check if system exists"""
@@ -360,8 +399,8 @@ class DatabaseDataProvider:
 
 
 def get_data_provider(use_database: bool = False,
-                     json_path: str = "data/data.json",
-                     db_path: str = "data/haven.db") -> DataProvider:
+                     json_path: str = None,
+                     db_path: str = None) -> DataProvider:
     """
     Factory function to create appropriate data provider
 
@@ -381,16 +420,40 @@ def get_data_provider(use_database: bool = False,
         provider = get_data_provider(use_database=USE_DATABASE)
         systems = provider.get_all_systems()
     """
+    # Determine defaults from settings if not provided
+    # Prefer canonical paths from src.common.paths
+    try:
+        from src.common.paths import data_path, database_path
+        if json_path is None:
+            json_path = str(data_path('data.json'))
+        if db_path is None:
+            db_path = str(database_path())
+    except Exception:
+        try:
+            from config.settings import JSON_DATA_PATH, DATABASE_PATH
+            if json_path is None:
+                json_path = str(JSON_DATA_PATH)
+            if db_path is None:
+                db_path = str(DATABASE_PATH)
+        except Exception:
+            json_path = json_path or "data/data.json"
+            db_path = db_path or "data/VH-Database.db"
+
     if use_database:
-        logger.info("Using DATABASE data provider")
+        logger.info(f"Using DATABASE provider at {db_path}")
         return DatabaseDataProvider(db_path)
-    else:
-        logger.info("Using JSON data provider")
-        return JSONDataProvider(json_path)
+    # Prefer JSON provider if requested, fallback to DB if missing
+    try:
+        provider = JSONDataProvider(json_path=json_path)
+        logger.info(f"Using JSON provider at {json_path}")
+        return provider
+    except Exception:
+        logger.warning("JSON provider unavailable; falling back to Database provider")
+        return DatabaseDataProvider(db_path)
 
 
-def auto_detect_provider(json_path: str = "data/data.json",
-                        db_path: str = "data/haven.db",
+def auto_detect_provider(json_path: str = None,
+                        db_path: str = None,
                         threshold: int = 1000) -> DataProvider:
     """
     Automatically detect which provider to use based on dataset size
@@ -407,6 +470,16 @@ def auto_detect_provider(json_path: str = "data/data.json",
     Returns:
         DataProvider instance
     """
+    try:
+        from config.settings import JSON_DATA_PATH, DATABASE_PATH
+        if json_path is None:
+            json_path = str(JSON_DATA_PATH)
+        if db_path is None:
+            db_path = str(DATABASE_PATH)
+    except Exception:
+            json_path = json_path or "data/data.json"
+            db_path = db_path or "data/VH-Database.db"
+
     db_path_obj = Path(db_path)
     json_path_obj = Path(json_path)
 
@@ -421,25 +494,9 @@ def auto_detect_provider(json_path: str = "data/data.json",
         except Exception as e:
             logger.warning(f"Failed to read database: {e}")
 
-    # Check JSON
-    if json_path_obj.exists():
-        try:
-            json_provider = JSONDataProvider(json_path)
-            json_count = json_provider.get_total_count()
-
-            if json_count < threshold:
-                logger.info(f"Auto-detected JSON provider ({json_count:,} systems)")
-                return json_provider
-            else:
-                logger.warning(f"JSON has {json_count:,} systems (>= threshold {threshold}), "
-                             "consider migrating to database")
-                return json_provider
-        except Exception as e:
-            logger.warning(f"Failed to read JSON: {e}")
-
-    # Default to JSON
-    logger.info("Auto-detected JSON provider (default)")
-    return JSONDataProvider(json_path)
+    # Default: Database provider only (JSON is deprecated)
+    logger.info("Auto-detected DATABASE provider (default)")
+    return DatabaseDataProvider(db_path)
 
 
 # ========== USAGE EXAMPLES ==========

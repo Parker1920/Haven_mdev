@@ -60,7 +60,8 @@ def test_control_room_imports():
         print_test("_init_data_provider method exists", has_init_provider)
         
         has_sync_check = '_check_data_sync_status' in methods
-        print_test("_check_data_sync_status method exists", has_sync_check)
+        # Data sync status check removed from runtime (archived)
+        print_test("_check_data_sync_status method removed (deprecated)", not has_sync_check)
         
         has_db_stats = 'show_database_stats' in methods
         print_test("show_database_stats method exists", has_db_stats)
@@ -102,7 +103,8 @@ def test_wizard_imports():
         print_test("_save_system_via_provider method exists", has_save_via_provider)
         
         has_save_via_json = '_save_system_via_json' in methods
-        print_test("_save_system_via_json method exists", has_save_via_json)
+        # Save via JSON deprecated
+        print_test("_save_system_via_json method removed (deprecated)", not has_save_via_json)
         
         return True
         
@@ -115,27 +117,17 @@ def test_data_providers():
     print_section("TEST 3: Data Provider Functionality")
     
     try:
-        from src.common.data_provider import DatabaseDataProvider, JSONDataProvider
-        print_test("Data providers imported", True)
-        
-        # Test JSON provider
-        json_provider = JSONDataProvider("data/data.json")
-        json_systems = json_provider.get_all_systems()
-        print_test("JSON provider working", True, f"{len(json_systems)} systems")
+        from src.common.data_provider import DatabaseDataProvider
+        from src.common.paths import database_path
+        print_test("DatabaseDataProvider imported", True)
         
         # Test Database provider
-        db_provider = DatabaseDataProvider("data/haven.db")
+        db_provider = DatabaseDataProvider(str(database_path()))
         db_systems = db_provider.get_all_systems()
         print_test("Database provider working", True, f"{len(db_systems)} systems")
         
-        # Test sync status
-        from src.migration.sync_data import DataSynchronizer
-        syncer = DataSynchronizer()
-        status = syncer.check_sync_status()
-        
-        in_sync = status.get('in_sync', False)
-        print_test("Data sync check working", True, 
-                  f"Sync: {in_sync}, JSON: {status.get('json_count')}, DB: {status.get('db_count')}")
+        # JSON provider deprecated; sync tools archived and not tested
+        print_test("Data sync tooling archived (check Archive-Dump)", True)
         
         return True
         
@@ -228,23 +220,13 @@ def test_migration_tools():
     print_section("TEST 7: Migration & Sync Tools")
     
     try:
-        # JSON to SQLite migrator
-        from src.migration.json_to_sqlite import JSONToSQLiteMigrator
-        print_test("json_to_sqlite.py imported", True)
-        
-        # JSON importer
-        from src.migration.import_json import JSONImporter
-        print_test("import_json.py imported", True)
-        
-        # Sync tool
-        from src.migration.sync_data import DataSynchronizer
-        print_test("sync_data.py imported", True)
-        
-        # Test sync functionality
-        syncer = DataSynchronizer()
-        status = syncer.check_sync_status()
-        print_test("Sync check functional", 'error' not in status, 
-                  f"Status: {status.get('in_sync', 'unknown')}")
+        # Migration tools are archived; confirm their presence in Archive-Dump
+        archive_sqlite = Path('Archive-Dump/src/migration/json_to_sqlite.py')
+        archive_import = Path('Archive-Dump/src/migration/import_json.py')
+        archive_sync = Path('Archive-Dump/src/migration/sync_data.py')
+        print_test("json_to_sqlite.py archived", archive_sqlite.exists())
+        print_test("import_json.py archived", archive_import.exists())
+        print_test("sync_data.py archived", archive_sync.exists())
         
         return True
         
@@ -261,7 +243,8 @@ def test_database_module():
         print_test("database.py imported", True)
         
         # Test database connection
-        db = HavenDatabase("data/haven.db")
+        from src.common.paths import database_path
+        db = HavenDatabase(str(database_path()))
         print_test("Database connection", True)
         
         # Test basic queries
@@ -295,13 +278,8 @@ def test_phase_integration():
         systems = provider.get_all_systems()
         print_test("Data retrieval", len(systems) > 0, f"Retrieved {len(systems)} systems")
         
-        # Test sync status
-        from src.migration.sync_data import DataSynchronizer
-        syncer = DataSynchronizer()
-        status = syncer.check_sync_status()
-        in_sync = status.get('in_sync', False)
-        print_test("Data synchronization", in_sync, 
-                  f"JSON: {status.get('json_count')}, DB: {status.get('db_count')}")
+        # Data sync tooling is archived; not part of runtime checks
+        print_test("Data synchronization check (deprecated)", True)
         
         return True
         
@@ -348,8 +326,8 @@ def check_file_structure():
     print_section("TEST 11: File Structure Integrity")
     
     required_files = {
-        "data/data.json": "JSON data file",
-        "data/haven.db": "SQLite database",
+        "data/data.json": "JSON data file (deprecated/archived)",
+        "data/VH-Database.db": "SQLite database",
         "data/data.schema.json": "Data schema",
         "config/settings.py": "Configuration",
         "src/control_room.py": "Control Room",
@@ -358,8 +336,8 @@ def check_file_structure():
         "src/common/paths.py": "Path utilities",
         "src/common/data_provider.py": "Data providers",
         "src/common/database.py": "Database module",
-        "src/migration/sync_data.py": "Sync utility",
-        "src/migration/json_to_sqlite.py": "Migration tool",
+        "Archive-Dump/src/migration/sync_data.py": "Sync utility (archived)",
+        "Archive-Dump/src/migration/json_to_sqlite.py": "Migration tool (archived)",
     }
     
     all_exist = True

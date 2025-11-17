@@ -2,7 +2,10 @@
 
 ## Overview
 
-The Control Room now automatically checks if your JSON and database backends are in sync on startup, and provides tools to sync them manually if needed.
+Note: The JSON ↔ Database sync tools are deprecated and have been archived in the repository under `Archive-Dump/src/migration/`.
+They are no longer part of the default web-first runtime. Use the database-first workflow and server APIs instead. The rest of this document describes the archived tools for reference only.
+
+The Control Room used to automatically check if your JSON and database backends are in sync on startup, and included tools to sync them manually if needed.
 
 ---
 

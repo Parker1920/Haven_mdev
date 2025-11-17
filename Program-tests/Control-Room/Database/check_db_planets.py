@@ -2,8 +2,9 @@
 """Quick script to check if planets exist in database."""
 
 from src.common.database import HavenDatabase
+from src.common.paths import database_path
 
-with HavenDatabase('data/haven.db') as db:
+with HavenDatabase(str(database_path())) as db:
     systems = db.get_all_systems(include_planets=True)
 
 print(f"\nTotal systems in database: {len(systems)}\n")

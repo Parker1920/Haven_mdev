@@ -85,24 +85,25 @@ except Exception as e:
     print(f"  ❌ Wizard check failed: {e}")
     sys.exit(1)
 
-print("\n[TEST 5] Backend Switching Test")
+print("\n[TEST 5] Backend Availability Test")
 try:
-    # Test with JSON backend
-    from src.common.data_provider import JSONDataProvider, DatabaseDataProvider
+    # Ensure the Database provider is used across program tests
+    from src.common.data_provider import DatabaseDataProvider
 
-    json_provider = JSONDataProvider()
-    json_count = json_provider.get_total_count()
-    print(f"  ✓ JSON provider: {json_count} systems")
-
-    # Test with Database backend
     db_provider = DatabaseDataProvider()
     db_count = db_provider.get_total_count()
     print(f"  ✓ Database provider: {db_count} systems")
 
-    if json_count == db_count:
-        print(f"  ✓ Both backends have same count")
-    else:
-        print(f"  ⚠️  Count mismatch: JSON={json_count}, DB={db_count}")
+    # Optional: confirm JSON provider is deprecated/unavailable
+    try:
+        from src.common.data_provider import JSONDataProvider
+        try:
+            json_provider = JSONDataProvider()
+            print(f"  ⚠️  JSONDataProvider initialized unexpectedly; deprecation not applied")
+        except NotImplementedError:
+            print(f"  ✓ JSONDataProvider is deprecated and unavailable")
+    except Exception:
+        print(f"  ✓ JSONDataProvider is not importable (deprecated)")
 
 except Exception as e:
     print(f"  ❌ Backend switching test failed: {e}")
@@ -117,7 +118,7 @@ print("  2. Verify UI shows backend status (DATABASE)")
 print("  3. Verify system count displayed (9 systems)")
 print("  4. Create a new test system in database mode")
 print("  5. Verify system is saved to database")
-print("  6. Switch to JSON mode: config/settings.py USE_DATABASE = False")
+    print("  6. (Optional) JSON provider has been deprecated; use Database provider only")
 print("  7. Launch Wizard again")
 print("  8. Verify UI shows backend status (JSON)")
 print("  9. Create another test system in JSON mode")

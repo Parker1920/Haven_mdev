@@ -1,7 +1,10 @@
 import sqlite3
 import json
-
-conn = sqlite3.connect('data/VH-Database.db')
+try:
+    from src.common.paths import database_path
+    conn = sqlite3.connect(str(database_path()))
+except Exception:
+    conn = sqlite3.connect('data/VH-Database.db')
 conn.row_factory = sqlite3.Row
 cursor = conn.cursor()
 

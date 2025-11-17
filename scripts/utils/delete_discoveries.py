@@ -5,12 +5,17 @@ Keeps all systems, planets, and moons intact
 
 import sqlite3
 from pathlib import Path
+try:
+    from src.common.paths import database_path
+    VH_DB_PATH = Path(database_path())
+except Exception:
+    VH_DB_PATH = Path('data/VH-Database.db')
 
 def delete_all_discoveries():
     """Delete all discoveries from both databases"""
 
     # VH-Database.db
-    vh_db_path = Path('data/VH-Database.db')
+    vh_db_path = VH_DB_PATH
     keeper_db_path = Path('docs/guides/Haven-lore/keeper-bot/data/keeper.db')
 
     # Delete from VH-Database.db

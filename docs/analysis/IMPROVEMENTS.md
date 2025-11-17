@@ -108,11 +108,11 @@ class HavenTheme:
     glass: str = '#16213e80'
     text_primary: str = '#e0ffff'
     text_secondary: str = '#7eb8bb'
-    accent_cyan: str = '#00CED1'
+    accent_cyan: str = '#00C2B3'
     accent_purple: str = '#9370DB'
     warning: str = '#FFD700'
     success: str = '#32CD32'
-    glow: str = '#00ffff'
+    glow: str = '#00C2B3'
 
 THEME = HavenTheme()
 

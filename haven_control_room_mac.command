@@ -1,36 +1,6 @@
 #!/bin/bash
-# Direct launcher: starts Control Room GUI immediately (no menu)
-cd "$(dirname "$0")"
-
-# Create error logs directory if it doesn't exist
-mkdir -p logs/error_logs
-
-# Generate timestamp for log file
-TIMESTAMP=$(date +"%Y-%m-%d_%H%M%S")
-ERROR_LOG="logs/error_logs/control-room-launch-${TIMESTAMP}.log"
-
-# Try Python 3 and capture output
-echo "=== Control Room Launch Attempt: $(date) ===" > "$ERROR_LOG"
-echo "Working directory: $(pwd)" >> "$ERROR_LOG"
-echo "" >> "$ERROR_LOG"
-
-if [ -x ".venv/bin/python3" ]; then
-  echo "Using: .venv/bin/python3" >> "$ERROR_LOG"
-  .venv/bin/python3 src/control_room.py >> "$ERROR_LOG" 2>&1 &
-  PYTHON_PID=$!
-  echo "Python PID: $PYTHON_PID" >> "$ERROR_LOG"
-elif command -v python3 >/dev/null 2>&1; then
-  echo "Using: $(which python3)" >> "$ERROR_LOG"
-  python3 src/control_room.py >> "$ERROR_LOG" 2>&1 &
-  PYTHON_PID=$!
-  echo "Python PID: $PYTHON_PID" >> "$ERROR_LOG"
-else
-  echo "Using: $(which python)" >> "$ERROR_LOG"
-  python src/control_room.py >> "$ERROR_LOG" 2>&1 &
-  PYTHON_PID=$!
-  echo "Python PID: $PYTHON_PID" >> "$ERROR_LOG"
-fi
-
-echo "" >> "$ERROR_LOG"
-echo "Launch script completed at: $(date)" >> "$ERROR_LOG"
+# Archived launcher — use Haven-UI web app instead
+# Original archived at: Archive-Dump/legacy_desktop_20251116/haven_control_room_mac.command
+echo "This launcher has been archived. Use the Haven-UI web application instead."
+echo "See: Haven-UI/README.md"
 exit 0

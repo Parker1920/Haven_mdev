@@ -23,7 +23,7 @@ from src.common.paths import project_root
 COLORS = {
     'bg_dark': '#0a0e27',
     'bg_card': '#141b3d',
-    'accent_cyan': '#00d9ff',
+    'accent_cyan': '#00C2B3',
     'accent_purple': '#9d4edd',
     'accent_pink': '#ff006e',
     'text_primary': '#ffffff',

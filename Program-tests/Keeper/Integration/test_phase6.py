@@ -156,23 +156,15 @@ def test_phase6_map_generation():
 def test_phase6_import_functionality():
     """Test JSON import functionality."""
     print("\nTEST 5: JSON Import Functionality...")
+    # JSON import functionality is deprecated; check archive instead
     try:
-        from src.migration.import_json import JSONImporter
-        from config.settings import USE_DATABASE
-        
-        importer = JSONImporter(use_database=USE_DATABASE)
-        print(f"  ✓ JSONImporter initialized")
-        print(f"  ✓ Using backend: {'database' if USE_DATABASE else 'json'}")
-        
-        # Check that imports directory exists
-        imports_dir = project_root / "data" / "imports"
-        if imports_dir.exists():
-            json_files = list(imports_dir.glob("*.json"))
-            print(f"  ✓ Imports directory exists: {len(json_files)} JSON files found")
+        archive_import = project_root / 'Archive-Dump' / 'src' / 'migration' / 'import_json.py'
+        if archive_import.exists():
+            print(f"  ✓ import_json.py is archived: {archive_import}")
+            return True
         else:
-            print(f"  ⊘ Imports directory not found (will be created when needed)")
-        
-        return True
+            print(f"  ⚠ import_json.py not found in Archive-Dump")
+            return False
     except Exception as e:
         print(f"  ✗ Import functionality test failed: {e}")
         return False
@@ -217,8 +209,6 @@ def test_phase6_all_modules_import():
             ('src.Beta_VH_Map', 'Map Generator'),
             ('src.common.database', 'Database'),
             ('src.common.data_provider', 'Data Provider'),
-            ('src.migration.sync_data', 'Sync Tool'),
-            ('src.migration.import_json', 'JSON Importer'),
             ('config.settings', 'Configuration'),
         ]
         
@@ -253,10 +243,10 @@ def test_phase6_file_structure():
             'src/Beta_VH_Map.py',
             'src/common/database.py',
             'src/common/data_provider.py',
-            'src/migration/sync_data.py',
-            'src/migration/import_json.py',
+            'Archive-Dump/src/migration/sync_data.py',
+            'Archive-Dump/src/migration/import_json.py',
             'config/settings.py',
-            'data/data.json',
+            'data/data.json',  # optional/archived format
             'data/data.schema.json',
         ]
         
@@ -338,30 +328,26 @@ def test_phase6_data_provider_switching():
     """Test switching between JSON and database backends."""
     print("\nTEST 10: Backend Switching...")
     try:
-        from src.common.data_provider import get_data_provider, JSONDataProvider, DatabaseDataProvider
+        from src.common.data_provider import get_data_provider, DatabaseDataProvider
         from config import settings
         
         # Get provider with correct settings
         is_using_db = settings.USE_DATABASE
         current_provider = get_data_provider(use_database=is_using_db)
         
-        if is_using_db:
-            assert isinstance(current_provider, DatabaseDataProvider), "Should be using database"
-            print(f"  ✓ Using database backend (as configured)")
-        else:
-            assert isinstance(current_provider, JSONDataProvider), "Should be using JSON"
-            print(f"  ✓ Using JSON backend (as configured)")
+        assert isinstance(current_provider, DatabaseDataProvider), "Should be using database"
+        print(f"  ✓ Using database backend (as configured)")
         
-        # Test that both providers can be created
-        json_provider = JSONDataProvider()
-        db_provider = DatabaseDataProvider()
-        
-        json_count = json_provider.get_total_count()
-        db_count = db_provider.get_total_count()
-        
-        print(f"  ✓ JSON backend: {json_count} systems")
-        print(f"  ✓ Database backend: {db_count} systems")
-        print(f"  ✓ Backend switching functional")
+        # Optional: confirm JSON provider is deprecated/unavailable
+        try:
+            from src.common.data_provider import JSONDataProvider
+            try:
+                _ = JSONDataProvider()
+                print(f"  ⚠️  JSONDataProvider initialized unexpectedly; deprecation not applied")
+            except NotImplementedError:
+                print(f"  ✓ JSONDataProvider is deprecated and unavailable")
+        except Exception:
+            print(f"  ✓ JSONDataProvider is not importable (deprecated)")
         
         return True
     except Exception as e:

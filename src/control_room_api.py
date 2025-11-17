@@ -12,6 +12,11 @@ This file is the initial scaffold for the conversion from a CustomTkinter deskto
 from __future__ import annotations
 
 import os
+from pathlib import Path as _Path
+try:
+    from dotenv import load_dotenv
+except Exception:
+    load_dotenv = None
 import subprocess
 import logging
 from logging.handlers import RotatingFileHandler
@@ -30,6 +35,15 @@ from pathlib import Path
 
 # Allow this FastAPI app to use a separate data directory (Haven-UI) by setting
 # the `HAVEN_UI_DIR` env var. If not set, default to repo `Haven-UI` folder.
+# Load .env from Haven-UI if present (dev convenience)
+if load_dotenv:
+    # Try to load from explicit HAVEN_UI_DIR, else project default
+    env_dir = os.environ.get('HAVEN_UI_DIR') or str(project_root() / 'Haven-UI')
+    env_path = _Path(env_dir) / '.env'
+    if env_path.exists():
+        load_dotenv(dotenv_path=str(env_path))
+        logging.info(f"Loaded .env from: {env_path}")
+
 HAVEN_UI_DIR = os.environ.get('HAVEN_UI_DIR')
 if HAVEN_UI_DIR:
     HAVEN_UI_ROOT = Path(HAVEN_UI_DIR)
@@ -83,10 +97,17 @@ if ui_dist_dir.exists():
     # Serve built React app from Haven-UI/dist under /haven-ui path to avoid masking API routes
     app.mount('/haven-ui', StaticFiles(directory=str(ui_dist_dir), html=True), name='ui')
     # Also expose assets under both /assets and /haven-ui/assets in case the built index uses absolute paths
+    # Mount shared 'assets' if they exist (this is typically used by built SPA)
     assets_dir = ui_dist_dir / 'assets'
     if assets_dir.exists():
         app.mount('/assets', StaticFiles(directory=str(assets_dir)), name='assets')
         app.mount('/haven-ui/assets', StaticFiles(directory=str(assets_dir)), name='ui-assets')
+    # Expose map-specific static files under /map/static so VH-Map.html can reference them
+    map_static_dir = ui_dist_dir / 'static'
+    if map_static_dir.exists():
+        app.mount('/map/static', StaticFiles(directory=str(map_static_dir)), name='map-static')
+        # Mount the whole dist directory at /map so system-specific pages (system_*.html) are served
+        app.mount('/map', StaticFiles(directory=str(ui_dist_dir), html=True), name='map')
 else:
     # Fallback: mount the static folder (prebuilt simple pages) under /haven-ui for consistent paths
     ui_static_dir = HAVEN_UI_ROOT / 'static'
@@ -237,7 +258,14 @@ async def admin_login(payload: dict, request: Request):
             # Set a cookie in response by returning a Set-Cookie header
             from fastapi.responses import JSONResponse
             resp = JSONResponse({'status': 'ok'})
-            resp.set_cookie('haven_session_token', token, httponly=True, samesite='lax')
+            # Cookie attributes: default to 'lax' to avoid cross-site issues. In development
+            # set HAVEN_ALLOW_INSECURE_ADMIN_COOKIE=1 to use SameSite=None (and optionally Secure)
+            allow_insecure = os.environ.get('HAVEN_ALLOW_INSECURE_ADMIN_COOKIE') == '1'
+            cookie_secure = os.environ.get('HAVEN_ADMIN_COOKIE_SECURE', '') == '1'
+            if allow_insecure:
+                resp.set_cookie('haven_session_token', token, httponly=True, samesite='none', secure=cookie_secure)
+            else:
+                resp.set_cookie('haven_session_token', token, httponly=True, samesite='lax', secure=cookie_secure)
             return resp
         raise HTTPException(status_code=403, detail='Invalid password')
     except HTTPException:
@@ -255,7 +283,13 @@ async def admin_logout(request: Request):
             _destroy_session(session_token)
         from fastapi.responses import JSONResponse
         resp = JSONResponse({'status': 'ok'})
-        resp.delete_cookie('haven_session_token')
+        # Delete cookie with same attributes as set (secure/samesite)
+        allow_insecure = os.environ.get('HAVEN_ALLOW_INSECURE_ADMIN_COOKIE') == '1'
+        cookie_secure = os.environ.get('HAVEN_ADMIN_COOKIE_SECURE', '') == '1'
+        if allow_insecure:
+            resp.delete_cookie('haven_session_token', samesite='none', secure=cookie_secure)
+        else:
+            resp.delete_cookie('haven_session_token', samesite='lax', secure=cookie_secure)
         return resp
     except Exception as e:
         logger.exception('Logout failed')
@@ -588,19 +622,58 @@ async def upload_photo(file: UploadFile = File(...)):
 async def generate_map(background_tasks: BackgroundTasks, noop: bool = False, limit: int | None = None):
     try:
         # Call Beta_VH_Map.main programmatically to generate output
+        # Ensure 'src' is on sys.path for module imports when uvicorn runs (module is run with CWD root)
+        _project_root = project_root()
+        if str(_project_root) not in sys.path:
+            sys.path.insert(0, str(_project_root))
         from src.Beta_VH_Map import main as generate_map_main
 
         argv = ["--no-open"]
-        # Ensure map generation reads/writes from the Haven-UI paths
-        data_file_ui = str(HAVEN_UI_ROOT / 'data' / 'data.json')
+        # Prefer database file for map generation (avoids JSON incompatibilities) when it exists
+        db_file_ui = HAVEN_UI_ROOT / 'data' / 'haven_ui.db'
+        # Use haven_ui.db if present; else look for HAVEN_UI_ROOT/data/data.json; else use canonical DATABASE_PATH
+        if db_file_ui.exists():
+            data_file_ui = str(db_file_ui)
+        else:
+            ui_data_json = HAVEN_UI_ROOT / 'data' / 'data.json'
+            if ui_data_json.exists():
+                data_file_ui = str(ui_data_json)
+            else:
+                # Fall back to master DB path if it exists
+                try:
+                    from src.common.paths import database_path
+                    main_db = database_path()
+                    if Path(main_db).exists():
+                        data_file_ui = str(main_db)
+                    else:
+                        data_file_ui = str(HAVEN_UI_ROOT / 'data' / 'data.json')
+                except Exception:
+                    data_file_ui = str(HAVEN_UI_ROOT / 'data' / 'data.json')
         out_path = str(HAVEN_UI_ROOT / 'dist' / 'VH-Map.html')
         argv.extend(["--data-file", data_file_ui, "--out", out_path])
+        logger.info(f"Queueing map generation with data_file={data_file_ui}, out={out_path}")
         if limit:
             argv.extend(["--limit", str(limit)])
         # Run in background
         def run():
             try:
                 generate_map_main(argv)
+                # Ensure a 'latest' redirect exists so /map/latest works under static mount
+                try:
+                    latest_file = HAVEN_UI_ROOT / 'dist' / 'latest'
+                    latest_file.parent.mkdir(parents=True, exist_ok=True)
+                    with open(latest_file, 'w', encoding='utf-8') as f:
+                        f.write('<!doctype html><html><head><meta http-equiv="refresh" content="0; url=VH-Map.html"/></head><body></body></html>')
+                except Exception:
+                    logger.exception("Failed to write 'latest' redirect file")
+                # Write a simple status file that maps UI can poll to know if generation succeeded
+                try:
+                    status_file = HAVEN_UI_ROOT / 'dist' / 'map_status.json'
+                    status = { 'status': 'ok', 'generated_at': time.time(), 'out': out_path }
+                    with open(status_file, 'w', encoding='utf-8') as sf:
+                        json.dump(status, sf)
+                except Exception:
+                    logger.exception("Failed to write map_status.json")
             except SystemExit:
                 pass
             except Exception:
@@ -618,6 +691,30 @@ async def latest_map():
     if not mpath.exists():
         raise HTTPException(status_code=404, detail="Map not found")
     return FileResponse(str(mpath), media_type='text/html')
+
+
+@app.get('/api/map_status')
+async def map_status():
+    try:
+        mpath = HAVEN_UI_ROOT / 'dist' / 'VH-Map.html'
+        status_path = HAVEN_UI_ROOT / 'dist' / 'map_status.json'
+        if not mpath.exists():
+            return {'generated': False}
+        result = { 'generated': True, 'path': str(mpath) }
+        try:
+            result['mtime'] = mpath.stat().st_mtime
+        except Exception:
+            pass
+        if status_path.exists():
+            try:
+                content = json.loads(status_path.read_text(encoding='utf-8'))
+                result['status_file'] = content
+            except Exception:
+                pass
+        return result
+    except Exception as e:
+        logger.exception('Failed to get map_status')
+        raise HTTPException(status_code=500, detail=str(e))
 
 # Backups
 @app.post("/api/backup")

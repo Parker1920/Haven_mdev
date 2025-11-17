@@ -36,7 +36,7 @@ Phase 1 of the billion-scale architecture migration has been successfully comple
 **Lines of Code:** 360
 **Test Status:** Both providers tested and verified
 
-### 3. Migration Script (`src/migration/json_to_sqlite.py`)
+### 3. Migration Script (`src/migration/json_to_sqlite.py`) (ARCHIVED)
 - ✅ JSON to SQLite migration tool
 - ✅ Automatic backup of existing database
 - ✅ Progress tracking and error handling
@@ -58,7 +58,7 @@ Phase 1 of the billion-scale architecture migration has been successfully comple
 **Lines of Code:** 280
 **Test Status:** Configuration loaded successfully
 
-### 5. JSON Import Tool (`src/migration/import_json.py`)
+### 5. JSON Import Tool (`src/migration/import_json.py`) (ARCHIVED)
 - ✅ Import public EXE JSON exports into master database
 - ✅ Batch import from directory
 - ✅ Duplicate handling (skip or update)

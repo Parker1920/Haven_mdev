@@ -12,9 +12,10 @@ sys.path.insert(0, str(Path(__file__).parent / 'config'))
 
 from Beta_VH_Map import prepare_single_system_solar
 from common.data_provider import DatabaseDataProvider
+from src.common.paths import database_path
 
 # Get system from database
-db_provider = DatabaseDataProvider('data/haven.db')
+db_provider = DatabaseDataProvider(str(database_path()))
 systems = db_provider.get_all_systems(include_planets=True)
 
 # Find LEPUSCAR OMEGA

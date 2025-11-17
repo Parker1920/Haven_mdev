@@ -35,7 +35,8 @@ def test_map_data_access():
         
         # Test reading from database
         from src.common.data_provider import DatabaseDataProvider
-        db_provider = DatabaseDataProvider("data/haven.db")
+        from src.common.paths import database_path
+        db_provider = DatabaseDataProvider(str(database_path()))
         db_systems = db_provider.get_all_systems()
         print(f"✓ Can read Database: {len(db_systems)} systems")
         

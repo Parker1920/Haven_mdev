@@ -23,19 +23,32 @@ class HavenDatabase:
     Designed to scale from 10 systems to 1 billion+ systems.
 
     Usage:
-        with HavenDatabase("data/haven.db") as db:
+        with HavenDatabase() as db:
             systems = db.get_all_systems(region="Adam")
             system = db.get_system_by_name("OOTLEFAR V")
             db.add_system(system_data)
     """
 
-    def __init__(self, db_path: str = "data/haven.db"):
+    def __init__(self, db_path: str = None):
         """
         Initialize database connection
 
         Args:
             db_path: Path to SQLite database file
         """
+        # Use configured DATABASE_PATH from settings if no path provided
+        if not db_path:
+            # Prefer canonical database_path() helper; fall back to configured setting
+            try:
+                from src.common.paths import database_path
+                db_path = database_path()
+            except Exception:
+                try:
+                    from config.settings import DATABASE_PATH
+                    db_path = DATABASE_PATH
+                except Exception:
+                    # Final fallback: canonical VH-Database filename
+                    db_path = "data/VH-Database.db"
         self.db_path = Path(db_path)
         self.conn = None
         self._ensure_database_exists()
@@ -61,13 +74,49 @@ class HavenDatabase:
 
     def _ensure_database_exists(self):
         """Create database and schema if it doesn't exist"""
+        # Ensure the directory exists
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # If the DB doesn't exist, create it and run schema creation
         if not self.db_path.exists():
             logger.info(f"Creating new database at {self.db_path}")
-            self.db_path.parent.mkdir(parents=True, exist_ok=True)
             with sqlite3.connect(str(self.db_path)) as conn:
                 self._create_schema(conn)
                 self._create_indexes(conn)
                 logger.info("Database schema created successfully")
+            return
+
+        # If the file exists, check whether schema is present (e.g., systems table)
+        try:
+            with sqlite3.connect(str(self.db_path)) as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='systems'")
+                row = cursor.fetchone()
+                if not row:
+                    # Log all existing tables (for debugging) and create schema if necessary
+                    cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+                    existing = [r[0] for r in cursor.fetchall()]
+                    logger.info(f"Database exists, but 'systems' table missing. Existing tables: {existing}. Creating schema...")
+                    self._create_schema(conn)
+                    self._create_indexes(conn)
+                    logger.info("Database schema created/updated successfully")
+                else:
+                    # Check for presence of expected tables and add any missing indexes
+                    cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+                    existing_tables = {r[0] for r in cursor.fetchall()}
+                    logger.info(f"Database exists and has tables: {sorted(list(existing_tables))}")
+                    if 'systems' in existing_tables:
+                        logger.info("Database has 'systems' table; skipping schema creation.")
+                    else:
+                        logger.info("Unexpected DB state detected; recreating schema where required.")
+                        self._create_schema(conn)
+                        self._create_indexes(conn)
+        except sqlite3.DatabaseError as e:
+            # If the database file is corrupted or invalid, log and re-create fresh schema (safely)
+            logger.error(f"Database error while checking schema: {e}. Attempting to recreate schema.")
+            with sqlite3.connect(str(self.db_path)) as conn:
+                self._create_schema(conn)
+                self._create_indexes(conn)
 
     def _create_schema(self, conn: sqlite3.Connection):
         """Create database tables"""
@@ -219,6 +268,11 @@ class HavenDatabase:
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        # Create a backward-compatible 'metadata' view for older scripts/tests that query 'metadata'
+        cursor.execute("""
+            CREATE VIEW IF NOT EXISTS metadata AS
+            SELECT key, value, updated_at FROM _metadata
+        """)
 
         # Initialize metadata
         cursor.execute("""
@@ -236,6 +290,12 @@ class HavenDatabase:
         cursor.execute("""
             INSERT OR IGNORE INTO _metadata (key, value)
             VALUES ('discoveries_enabled', 'true')
+        """)
+
+        # For compatibility, ensure there's a 'version' row in metadata view as well (backed by _metadata)
+        cursor.execute("""
+            INSERT OR IGNORE INTO _metadata (key, value)
+            VALUES ('schema_compat', 'metadata_view_present')
         """)
 
         conn.commit()
@@ -888,6 +948,47 @@ class HavenDatabase:
         if discovery_type:
             query += " AND discovery_type = ?"
             params.append(discovery_type)
+
+        query += " ORDER BY submission_timestamp DESC LIMIT ?"
+        params.append(limit)
+
+        cursor.execute(query, params)
+        return [dict(row) for row in cursor.fetchall()]
+
+    def search_discoveries(
+        self,
+        q: str,
+        system_id: Optional[str] = None,
+        planet_id: Optional[int] = None,
+        moon_id: Optional[int] = None,
+        discovery_type: Optional[str] = None,
+        limit: int = 100
+    ) -> List[Dict]:
+        """
+        Search discoveries by text across discovery_name, description, discovered_by and tags.
+        Also supports the same filters as get_discoveries.
+        """
+        cursor = self.conn.cursor()
+        query = "SELECT * FROM discoveries WHERE 1=1"
+        params: List[Any] = []
+
+        if system_id:
+            query += " AND system_id = ?"
+            params.append(system_id)
+        if planet_id:
+            query += " AND planet_id = ?"
+            params.append(planet_id)
+        if moon_id:
+            query += " AND moon_id = ?"
+            params.append(moon_id)
+        if discovery_type:
+            query += " AND discovery_type = ?"
+            params.append(discovery_type)
+
+        if q:
+            pattern = f"%{q}%"
+            query += " AND (discovery_name LIKE ? OR description LIKE ? OR discovered_by LIKE ? OR tags LIKE ? OR location_name LIKE ?)"
+            params.extend([pattern, pattern, pattern, pattern, pattern])
 
         query += " ORDER BY submission_timestamp DESC LIMIT ?"
         params.append(limit)

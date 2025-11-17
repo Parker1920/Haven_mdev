@@ -27,52 +27,24 @@ import logging
 import sqlite3
 from pathlib import Path
 from datetime import datetime
-import argparse
-from typing import List, Dict, Tuple
+"""
+ARCHIVED: import_json.py
 
-# Add parent directory to path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+This script previously handled importing JSON exports from the public EXE
+into the master database. It has been archived and is no longer part of
+the active runtime. The original script has been moved to
+`Archive-Dump/src/migration/import_json.py` for reference.
 
-from src.common.database import HavenDatabase
-from src.common.data_provider import get_data_provider
-from config.settings import USE_DATABASE, JSON_DATA_PATH, DATABASE_PATH
-
-
-class ImportStats:
-    """Track import statistics"""
-    def __init__(self):
-        self.files_processed = 0
-        self.systems_found = 0
-        self.systems_imported = 0
-        self.systems_updated = 0
-        self.systems_skipped = 0
-        self.systems_failed = 0
-        self.errors = []
-
-    def __str__(self):
-        return f"""
-Import Statistics:
-  Files Processed: {self.files_processed}
-  Systems Found: {self.systems_found}
-  Systems Imported: {self.systems_imported}
-  Systems Updated: {self.systems_updated}
-  Systems Skipped: {self.systems_skipped}
-  Systems Failed: {self.systems_failed}
-  Errors: {len(self.errors)}
+If you need to run the legacy importer, use the archived script instead.
 """
 
+def main():
+    raise NotImplementedError(
+        "The import_json tool has been archived. See Archive-Dump/src/migration/import_json.py"
+    )
 
-class JSONImporter:
-    """Handles importing JSON exports from public EXE version"""
-
-    def __init__(self, use_database: bool = USE_DATABASE):
-        """
-        Initialize importer
-
-        Args:
-            use_database: If True, import to database; if False, import to JSON
-        """
-        self.use_database = use_database
+if __name__ == "__main__":
+    main()
         self.stats = ImportStats()
         self.provider = get_data_provider(
             use_database=use_database,

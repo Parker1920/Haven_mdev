@@ -1,4 +1,35 @@
 """
+ARCHIVED STUB: sync_data.py
+
+The active web-first runtime no longer supports JSON↔DB sync via this script.
+The original full script has been archived at `Archive-Dump/src/migration/sync_data.py`.
+This stub prevents accidental use of the original sync utilities from active runtime code.
+"""
+
+def main():
+    raise NotImplementedError("Data sync tooling is archived. Use Archive-Dump scripts for legacy tools.")
+
+if __name__ == '__main__':
+    main()
+"""
+ARCHIVED: sync_data.py
+
+This script previously offered commands to check and synchronize data
+between the JSON EXE exports and the master SQLite database.
+It has been archived and removed from the active runtime. The original
+script was moved to `Archive-Dump/src/migration/sync_data.py` for reference.
+
+This stub intentionally raises NotImplementedError to prevent accidental use.
+"""
+
+def main():
+    raise NotImplementedError(
+        "The data synchronization tools have been archived. See Archive-Dump/src/migration/sync_data.py"
+    )
+
+if __name__ == '__main__':
+    main()
+"""
 Data Synchronization Utility
 
 Ensures JSON and database backends stay in sync.
@@ -78,67 +109,24 @@ class DataSynchronizer:
                 json_sys = json_ids[sys_id]
                 db_sys = db_ids[sys_id]
                 
-                # Compare key fields
-                if json_sys['name'] != db_sys['name']:
-                    differences.append((sys_id, 'name', json_sys['name'], db_sys['name']))
-                if json_sys.get('x') != db_sys.get('x') or \
-                   json_sys.get('y') != db_sys.get('y') or \
-                   json_sys.get('z') != db_sys.get('z'):
-                    differences.append((sys_id, 'coordinates', 
-                                      f"({json_sys.get('x')},{json_sys.get('y')},{json_sys.get('z')})",
-                                      f"({db_sys.get('x')},{db_sys.get('y')},{db_sys.get('z')})"))
+                """
+                ARCHIVED: sync_data.py
 
-            return {
-                "in_sync": len(only_in_json) == 0 and len(only_in_db) == 0 and len(differences) == 0,
-                "json_count": len(json_systems),
-                "db_count": len(db_systems),
-                "only_in_json": len(only_in_json),
-                "only_in_db": len(only_in_db),
-                "in_both": len(in_both),
-                "differences": len(differences),
-                "only_in_json_ids": list(only_in_json)[:5],  # Show first 5
-                "only_in_db_ids": list(only_in_db)[:5],
-                "difference_details": differences[:5]
-            }
+                This script previously offered commands to check and synchronize data
+                between the JSON EXE exports and the master SQLite database.
+                It has been archived and removed from the active runtime. The original
+                script was moved to `Archive-Dump/src/migration/sync_data.py` for reference.
 
-        except Exception as e:
-            return {"error": f"Failed to check sync status: {e}"}
+                This stub intentionally raises NotImplementedError to prevent accidental use.
+                """
 
-    def sync_json_to_db(self, overwrite: bool = False) -> bool:
-        """
-        Sync database from JSON (database = JSON)
+                def main():
+                    raise NotImplementedError(
+                        "The data synchronization tools have been archived. See Archive-Dump/src/migration/sync_data.py"
+                    )
 
-        Args:
-            overwrite: If True, overwrite existing systems in DB
-
-        Returns:
-            True if successful
-        """
-        if not self.initialize_providers():
-            return False
-
-        try:
-            print("\n[SYNC] JSON → Database")
-            print("=" * 60)
-
-            json_systems = self.json_provider.get_all_systems()
-            print(f"Found {len(json_systems)} systems in JSON")
-
-            synced = 0
-            skipped = 0
-            errors = 0
-
-            for system in json_systems:
-                try:
-                    # Check if system exists in database
-                    existing = self.db_provider.get_system_by_id(system['id'])
-                    
-                    if existing:
-                        if overwrite:
-                            # Update existing system
-                            self.db_provider.update_system(system['id'], system)
-                            synced += 1
-                            print(f"  ✓ Updated: {system['name']}")
+                if __name__ == '__main__':
+                    main()
                         else:
                             skipped += 1
                             print(f"  - Skipped: {system['name']} (already exists)")

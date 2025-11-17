@@ -97,30 +97,9 @@ def test_phase6_database_integrity():
 def test_phase6_data_sync():
     """Test data synchronization between JSON and database."""
     print("\nTEST 3: Data Synchronization...")
-    try:
-        from src.migration.sync_data import DataSynchronizer
-        
-        syncer = DataSynchronizer()
-        status = syncer.check_sync_status()
-        
-        if "error" in status:
-            print(f"  ✗ Sync check error: {status['error']}")
-            return False
-        
-        print(f"  ✓ JSON systems: {status['json_count']}")
-        print(f"  ✓ Database systems: {status['db_count']}")
-        print(f"  ✓ In sync: {status['in_sync']}")
-        
-        if not status['in_sync']:
-            print(f"  ⚠ Systems out of sync:")
-            print(f"    - Only in JSON: {status['only_in_json']}")
-            print(f"    - Only in DB: {status['only_in_db']}")
-            print(f"    - Differences: {status['differences']}")
-        
-        return True
-    except Exception as e:
-        print(f"  ✗ Data sync test failed: {e}")
-        return False
+    # Data sync between JSON and database is deprecated (we use database-only workflows).
+    print("SKIP: Data sync test removed - database-only deployment")
+    return True
 
 
 def test_phase6_map_generation():
@@ -156,26 +135,9 @@ def test_phase6_map_generation():
 def test_phase6_import_functionality():
     """Test JSON import functionality."""
     print("\nTEST 5: JSON Import Functionality...")
-    try:
-        from src.migration.import_json import JSONImporter
-        from config.settings import USE_DATABASE
-        
-        importer = JSONImporter(use_database=USE_DATABASE)
-        print(f"  ✓ JSONImporter initialized")
-        print(f"  ✓ Using backend: {'database' if USE_DATABASE else 'json'}")
-        
-        # Check that imports directory exists
-        imports_dir = project_root / "data" / "imports"
-        if imports_dir.exists():
-            json_files = list(imports_dir.glob("*.json"))
-            print(f"  ✓ Imports directory exists: {len(json_files)} JSON files found")
-        else:
-            print(f"  ⊘ Imports directory not found (will be created when needed)")
-        
-        return True
-    except Exception as e:
-        print(f"  ✗ Import functionality test failed: {e}")
-        return False
+    # JSON import functionality is deprecated and has been archived.
+    print("SKIP: JSON import test removed - database-only workflows")
+    return True
 
 
 def test_phase6_configuration():
@@ -217,8 +179,6 @@ def test_phase6_all_modules_import():
             ('src.Beta_VH_Map', 'Map Generator'),
             ('src.common.database', 'Database'),
             ('src.common.data_provider', 'Data Provider'),
-            ('src.migration.sync_data', 'Sync Tool'),
-            ('src.migration.import_json', 'JSON Importer'),
             ('config.settings', 'Configuration'),
         ]
         
@@ -253,9 +213,11 @@ def test_phase6_file_structure():
             'src/Beta_VH_Map.py',
             'src/common/database.py',
             'src/common/data_provider.py',
-            'src/migration/sync_data.py',
-            'src/migration/import_json.py',
+            # Migration tools were archived; ensure they are present in Archive-Dump
+            'Archive-Dump/src/migration/sync_data.py',
+            'Archive-Dump/src/migration/import_json.py',
             'config/settings.py',
+            # Data.json may be archived; ensure database file exists
             'data/data.json',
             'data/data.schema.json',
         ]
@@ -338,31 +300,27 @@ def test_phase6_data_provider_switching():
     """Test switching between JSON and database backends."""
     print("\nTEST 10: Backend Switching...")
     try:
-        from src.common.data_provider import get_data_provider, JSONDataProvider, DatabaseDataProvider
+        from src.common.data_provider import get_data_provider, DatabaseDataProvider
         from config import settings
-        
+
         # Get provider with correct settings
         is_using_db = settings.USE_DATABASE
         current_provider = get_data_provider(use_database=is_using_db)
-        
-        if is_using_db:
-            assert isinstance(current_provider, DatabaseDataProvider), "Should be using database"
-            print(f"  ✓ Using database backend (as configured)")
-        else:
-            assert isinstance(current_provider, JSONDataProvider), "Should be using JSON"
-            print(f"  ✓ Using JSON backend (as configured)")
-        
-        # Test that both providers can be created
-        json_provider = JSONDataProvider()
-        db_provider = DatabaseDataProvider()
-        
-        json_count = json_provider.get_total_count()
-        db_count = db_provider.get_total_count()
-        
-        print(f"  ✓ JSON backend: {json_count} systems")
-        print(f"  ✓ Database backend: {db_count} systems")
-        print(f"  ✓ Backend switching functional")
-        
+
+        assert isinstance(current_provider, DatabaseDataProvider), "Should be using database"
+        print(f"  ✓ Using database backend (as configured)")
+
+        # Optional: check whether JSON provider is available
+        try:
+            from src.common.data_provider import JSONDataProvider
+            try:
+                _ = JSONDataProvider()
+                print(f"  ✓ JSONDataProvider initialized successfully")
+            except Exception as e:
+                print(f"  ⚠️ JSONDataProvider failed to initialize: {e}")
+        except Exception as e:
+            print(f"  ⚠️ JSONDataProvider is not importable: {e}")
+
         return True
     except Exception as e:
         print(f"  ✗ Backend switching test failed: {e}")

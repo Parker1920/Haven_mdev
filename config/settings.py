@@ -106,7 +106,8 @@ SHOW_BACKEND_STATUS = True
 SHOW_SYSTEM_COUNT = True
 
 # ENABLE_BACKEND_TOGGLE: Allow users to toggle between JSON/Database in UI
-ENABLE_BACKEND_TOGGLE = True  # For testing; set to False in production
+# Disabled: web-first deployment uses database-only workflows and no toggle is supported
+ENABLE_BACKEND_TOGGLE = False
 
 # ========== FEATURE FLAGS ==========
 
@@ -114,7 +115,8 @@ ENABLE_BACKEND_TOGGLE = True  # For testing; set to False in production
 ENABLE_DATABASE_STATS = True
 
 # ENABLE_JSON_IMPORT: Enable JSON import tool in Control Room
-ENABLE_JSON_IMPORT = True
+# Disabled: JSON import tool is archived (database-only workflows)
+ENABLE_JSON_IMPORT = False
 
 # ENABLE_PROGRESSIVE_MAPS: Enable progressive map generation
 ENABLE_PROGRESSIVE_MAPS = False  # Will enable in Phase 5 (API server)
@@ -164,7 +166,7 @@ def get_data_provider():
     """
     import os
     import logging
-    from src.common.data_provider import get_data_provider, auto_detect_provider
+    from src.common.data_provider import get_data_provider as dp_get_data_provider, auto_detect_provider as dp_auto_detect_provider
 
     # User edition is ALWAYS JSON-only, never database
     is_user_edition = os.environ.get('HAVEN_USER_EDITION') == '1'
@@ -174,18 +176,18 @@ def get_data_provider():
     if is_user_edition:
         # User edition: force JSON provider
         logging.info("[SETTINGS] User edition detected - forcing JSON provider")
-        return get_data_provider(
+        return dp_get_data_provider(
             use_database=False,
             json_path=str(JSON_DATA_PATH)
         )
     elif AUTO_DETECT_BACKEND:
-        return auto_detect_provider(
+        return dp_auto_detect_provider(
             json_path=str(JSON_DATA_PATH),
             db_path=str(DATABASE_PATH),
             threshold=BACKEND_THRESHOLD
         )
     else:
-        return get_data_provider(
+        return dp_get_data_provider(
             use_database=USE_DATABASE,
             json_path=str(JSON_DATA_PATH),
             db_path=str(DATABASE_PATH)

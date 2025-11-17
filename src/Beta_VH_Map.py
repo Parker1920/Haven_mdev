@@ -18,7 +18,20 @@ import sys
 import logging
 from logging.handlers import RotatingFileHandler
 from datetime import datetime
-from common.paths import data_path, logs_dir, dist_dir, project_root
+from pathlib import Path
+try:
+    # Prefer absolute package-style import (used when running under a proper src package)
+    from src.common.paths import data_path, logs_dir, dist_dir, project_root
+except Exception:
+    # Try legacy local import (older scripts and frozen EXEs may use this)
+    try:
+        from common.paths import data_path, logs_dir, dist_dir, project_root
+    except Exception:
+        # Attempt to resolve sys.path so package import can succeed
+        _p = Path(__file__).resolve().parent.parent
+        if str(_p) not in sys.path:
+            sys.path.insert(0, str(_p))
+        from src.common.paths import data_path, logs_dir, dist_dir, project_root
 
 def _setup_logging() -> None:
     """Set up logging with console and file handlers."""
@@ -41,15 +54,22 @@ def _setup_logging() -> None:
 _setup_logging()
 
 import argparse
+import os
 import json
 import math
 import shutil
 import subprocess
 import webbrowser
 from typing import List, Optional
-from pathlib import Path
+# (Path already imported above)
 
-import pandas as pd
+try:
+    import pandas as pd
+    HAS_PANDAS = True
+except Exception:
+    pd = None
+    HAS_PANDAS = False
+    logging.warning("Pandas is not installed; map generation requires pandas for full functionality. To enable, run: pip install pandas")
 from typing import Tuple, Dict, Any
 
 # Phase 4: Map Generator integration with database backend
@@ -95,7 +115,7 @@ DATA_FILE = data_path("data.json")
 # DATA LOADING AND NORMALIZATION (Same as before)
 # ============================================================================
 
-def normalize_record(record: dict, region: Optional[str] = None) -> dict:
+def normalize_record(record, region: Optional[str] = None) -> dict:
     """Normalize a system record by mapping legacy field names to standard names."""
     """
     Normalize a system record by mapping legacy field names to standard names.
@@ -105,7 +125,29 @@ def normalize_record(record: dict, region: Optional[str] = None) -> dict:
     Returns:
         Normalized record dict.
     """
-    r = dict(record)
+    # Accept multiple legacy types: dict, str (system name), list
+    if isinstance(record, str):
+        r = {"name": record}
+    elif isinstance(record, list):
+        # If list contains dict(s) or strings, pick the first usable element
+        if not record:
+            r = {}
+        else:
+            first = record[0]
+            if isinstance(first, dict):
+                r = dict(first)
+            elif isinstance(first, str):
+                r = {"name": first}
+            else:
+                # Fallback: coerce to empty record and log
+                logging.warning(f"Unexpected list element in record: {first}; coercing to empty record")
+                r = {}
+    elif isinstance(record, dict):
+        r = dict(record)
+    else:
+        # Unexpected record type (None, int, etc.) - coerce to empty dict and log
+        logging.warning(f"Unexpected record type for normalize_record: {type(record)}; coercing to empty record")
+        r = {}
     # Map coordinate fields
     if "x_cords" in r and "x" not in r:
         r["x"] = r.pop("x_cords")
@@ -150,6 +192,9 @@ def load_systems(path: Path = DATA_FILE) -> pd.DataFrame:
     Raises:
         ValueError: If the JSON format is not supported.
     """
+    if pd is None:
+        raise RuntimeError("Pandas not installed. The map generator requires pandas. Install it with: pip install pandas")
+
     # Check if path is a database file (.db extension)
     if str(path).endswith('.db'):
         logging.info(f"Loading systems from database file: {path}")
@@ -358,7 +403,7 @@ def copy_static_files(output_dir: Path) -> None:
             logging.error(f"Fallback copy also failed: {e2}")
 
 
-def load_discoveries() -> List[Dict]:
+def load_discoveries(db_path: Optional[Path] = None) -> List[Dict]:
     """
     Load discoveries from the database.
     
@@ -367,20 +412,22 @@ def load_discoveries() -> List[Dict]:
     """
     try:
         if USE_DATABASE:
+            # Default to repository DB path unless an explicit db_path is provided
+            if db_path is None:
+                # Prefer HAVEN_UI_DIR if available (API runs with HAVEN_UI_DIR set)
+                ui_dir = os.environ.get('HAVEN_UI_DIR')
+                if ui_dir:
+                    db_path = Path(ui_dir) / 'data' / 'haven_ui.db'
+                else:
+                    db_path = Path(__file__).parent.parent / 'data' / 'VH-Database.db'
             try:
-                provider = get_data_provider()
-                # The provider should have access to get_discoveries through the database
-                # For now, we'll access the database directly if available
                 from src.common.database import HavenDatabase
-                db_path = str(Path(__file__).parent.parent / 'data' / 'VH-Database.db')
-                
-                with HavenDatabase(db_path) as db:
-                    # Get all discoveries (no filter)
+                with HavenDatabase(str(db_path)) as db:
                     discoveries = db.get_discoveries(limit=10000)
-                    logging.info(f"Loaded {len(discoveries)} discoveries from database")
+                    logging.info(f"Loaded {len(discoveries)} discoveries from database: {db_path}")
                     return discoveries
             except Exception as e:
-                logging.warning(f"Failed to load discoveries from database: {e}")
+                logging.warning(f"Failed to load discoveries from database {db_path}: {e}")
                 return []
         else:
             logging.debug("Database disabled, no discoveries will be shown")
@@ -414,6 +461,7 @@ def prepare_galaxy_systems_data(df: pd.DataFrame) -> List[dict]:
             )
         except Exception:
             x = y = z = 0.0
+
         item = {
             "type": "system",
             "name": row.get("name"),
@@ -574,7 +622,7 @@ def prepare_system_data(df: pd.DataFrame, region_filter: Optional[str] = None) -
 # ============================================================================
 # RENDERING AND EXPORTING
 # ============================================================================
-def write_galaxy_and_system_views(df: pd.DataFrame, output: Path):
+def write_galaxy_and_system_views(df: pd.DataFrame, output: Path, data_file_path: Optional[Path] = None):
     """Generate Galaxy Overview (one point per system) and System View for each system.
 
     This function now uses external template files and copies static assets.
@@ -586,8 +634,29 @@ def write_galaxy_and_system_views(df: pd.DataFrame, output: Path):
     # Copy static files (CSS, JS) to the output directory
     copy_static_files(output.parent)
 
-    # Load discoveries from database
-    discoveries_data = load_discoveries()
+    # Load discoveries from database (prefer the same DB the generator is using if available)
+    # If the generator was called with a DB path (data_file), it will be .db; otherwise use defaults
+    discoveries_data = []
+    try:
+        # If galaxy generation uses a DB path, prefer the provided `data_file_path` (it may be a .db file)
+        default_db = None
+        if data_file_path and str(data_file_path).endswith('.db'):
+            default_db = Path(data_file_path)
+        elif isinstance(DATA_FILE, (str, Path)) and str(DATA_FILE).endswith('.db'):
+            default_db = Path(DATA_FILE)
+        else:
+            default_db = None
+        # Try using HAVEN_UI_DIR if set
+        if os.environ.get('HAVEN_UI_DIR'):
+            candidate = Path(os.environ.get('HAVEN_UI_DIR')) / 'data' / 'haven_ui.db'
+            if candidate.exists():
+                default_db = candidate
+        if default_db and default_db.exists():
+            discoveries_data = load_discoveries(db_path=default_db)
+        else:
+            discoveries_data = load_discoveries()
+    except Exception as ex:
+        logging.warning(f"Error getting discoveries_data: {ex}")
     logging.info(f"Including {len(discoveries_data)} discoveries in map generation")
 
     # Galaxy overview
@@ -619,7 +688,35 @@ def write_galaxy_and_system_views(df: pd.DataFrame, output: Path):
         }
 
         # Filter discoveries for this system
-        system_discoveries = [d for d in discoveries_data if d.get('system_id') == row.get('id')]
+        system_id = row.get('id')
+        # Gather planet and moon ids for this system (if any) to match discoveries that reference them
+        planet_ids = []
+        moon_ids = []
+        for p in row.get('planets', []) or []:
+            pid = p.get('id')
+            if pid is not None:
+                planet_ids.append(pid)
+            for m in (p.get('moons') or []):
+                mid = m.get('id')
+                if mid is not None:
+                    moon_ids.append(mid)
+
+        # Include discoveries that reference the system directly, or refer to a planet/moon within the system
+        def is_for_system(d):
+            if d.get('system_id') == system_id:
+                return True
+            if d.get('planet_id') in planet_ids:
+                return True
+            if d.get('moon_id') in moon_ids:
+                return True
+            # Some discoveries are only attached by name; fallback: match discovery_name to planet/moon name
+            pname_set = {p.get('name') for p in (row.get('planets') or []) if p.get('name')}
+            mname_set = {m.get('name') for p in (row.get('planets') or []) for m in (p.get('moons') or []) if m.get('name')}
+            if d.get('discovery_name') in pname_set or d.get('discovery_name') in mname_set:
+                return True
+            return False
+
+        system_discoveries = [d for d in discoveries_data if is_for_system(d)]
 
         html = template.replace("{{SYSTEMS_DATA}}", json.dumps(solar, indent=2))
         html = html.replace("{{VIEW_MODE}}", "system")
@@ -696,7 +793,7 @@ def main(argv=None) -> int:
     out = Path(args.out)
     # Ensure output directory exists
     out.parent.mkdir(parents=True, exist_ok=True)
-    write_galaxy_and_system_views(df, out)
+    write_galaxy_and_system_views(df, out, data_file_path)
 
     if not args.no_open:
         opened = open_in_edge(out, debug=args.debug)

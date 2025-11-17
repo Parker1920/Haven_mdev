@@ -104,9 +104,20 @@ def reset_discoveries(db_path):
         conn.close()
 
 if __name__ == "__main__":
+    try:
+        from src.common.paths import database_path
+        VH_DB = str(database_path())
+    except Exception:
+        VH_DB = 'data/VH-Database.db'
+    try:
+        from src.common.paths import data_path
+        LOAD_TEST_DB = str(data_path('haven_load_test.db'))
+    except Exception:
+        LOAD_TEST_DB = 'data/haven_load_test.db'
+
     # Reset both Haven databases
-    reset_discoveries('data/VH-Database.db')
-    reset_discoveries('data/haven_load_test.db')
+    reset_discoveries(VH_DB)
+    reset_discoveries(LOAD_TEST_DB)
 
     # Reset Discord bot's keeper database
     reset_discoveries('docs/guides/Haven-lore/keeper-bot/data/keeper.db')

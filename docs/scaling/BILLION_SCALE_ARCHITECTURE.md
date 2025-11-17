@@ -1235,7 +1235,7 @@ if __name__ == '__main__':
 
     if not os.path.exists(db_path):
         print(f"⚠️  Database not found at {db_path}")
-        print("   Run migration first: python src/migration/json_to_sqlite.py")
+        print("   NOTE: The json_to_sqlite migration tool is archived. See Archive-Dump/src/migration/json_to_sqlite.py if you need the original script.")
     else:
         size_mb = os.path.getsize(db_path) / (1024 * 1024)
         print(f"✓ Database found ({size_mb:.1f} MB)")

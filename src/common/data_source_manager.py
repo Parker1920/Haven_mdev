@@ -27,7 +27,7 @@ class DataSourceInfo:
     Immutable container for data source information.
     Ensures all parts of the app see the exact same data about each source.
     """
-    name: str  # "production", "testing", "load_test"
+    name: str  # "production" or "testing"
     display_name: str  # User-friendly: "Production Data"
     path: Path  # Physical file/database path
     backend_type: str  # "json" or "database"
@@ -104,42 +104,51 @@ class DataSourceManager:
             size_mb=prod_size,
             icon="📊"
         )
+        # Backwards-compatible alias for older clients/tests expecting 'yh_database'
+        self._sources["yh_database"] = DataSourceInfo(
+            name="yh_database",
+            display_name="YH-Database (Official Map)",
+            path=prod_path,
+            backend_type="database",
+            system_count=prod_count,
+            description=f"YH master database ({prod_count:,} systems)" if prod_count > 0 else "YH master database (empty)",
+            size_mb=prod_size,
+            icon="📊"
+        )
         
         # ==================== TEST SOURCE ====================
-        test_path = PROJECT_ROOT / "tests" / "stress_testing" / "TESTING.json"
-        test_count = self._count_json_systems(test_path)
+        # Testing is now a database-backed source (project uses database-only workflow)
+        test_path = PROJECT_ROOT / "data" / "testing.db"
+        test_count = self._count_database_systems(test_path)
         test_size = self._get_file_size_mb(test_path)
         
         self._sources["testing"] = DataSourceInfo(
             name="testing",
-            display_name="Test Data",
+            display_name="Test Database",
             path=test_path,
-            backend_type="json",
+            backend_type="database",
             system_count=test_count,
-            description=f"Stress test data ({test_count:,} systems)" 
-                       if test_count > 0 else "Test data (file not found)",
+            description=f"Test database ({test_count:,} systems)" 
+                       if test_count > 0 else "Test database (not found)",
             size_mb=test_size,
             icon="🧪"
         )
         
-        # ==================== LOAD TEST SOURCE ====================
-        loadtest_path = PROJECT_ROOT / "data" / "haven_load_test.db"
-        loadtest_count = self._count_database_systems(loadtest_path)
-        loadtest_size = self._get_file_size_mb(loadtest_path)
-        
+        # Load test - keep as optional DB-backed source for map generation and stress testing
+        load_test_path = PROJECT_ROOT / "data" / "haven_load_test.db"
+        load_test_count = self._count_database_systems(load_test_path)
+        load_test_size = self._get_file_size_mb(load_test_path)
         self._sources["load_test"] = DataSourceInfo(
             name="load_test",
             display_name="Load Test Database",
-            path=loadtest_path,
+            path=load_test_path,
             backend_type="database",
-            system_count=loadtest_count,
-            description="Billion-scale load test database" 
-                       if loadtest_count > 0 else "Load test database (not found)",
-            size_mb=loadtest_size,
+            system_count=load_test_count,
+            description=f"Load test database ({load_test_count:,} systems)" if load_test_count > 0 else "Load test database (not found)",
+            size_mb=load_test_size,
             icon="🔬"
         )
         
-        # NOTE: "yh_database" source removed - it's now the "production" source above
         # VH-Database.db is THE master production database
     
     @staticmethod
@@ -233,7 +242,7 @@ class DataSourceManager:
         Get information about a specific data source.
         
         Args:
-            name: Source name ("production", "testing", "load_test")
+            name: Source name ("production", "testing")
         
         Returns:
             DataSourceInfo if found, None otherwise
@@ -265,7 +274,7 @@ class DataSourceManager:
         Used by data source dropdown to switch sources.
         
         Args:
-            name: Source name ("production", "testing", "load_test")
+            name: Source name ("production", "testing")
         
         Returns:
             True if successful, False if source not found

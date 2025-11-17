@@ -33,7 +33,7 @@ if IS_USER_EDITION and FROZEN:
     # - Bundled data is in BUNDLE_DIR/data (from PyInstaller)
     # - User files go to files/ subdirectory next to EXE
     FILES_DIR = PROJECT_ROOT / "files"
-    DATA_DIR = BUNDLE_DIR / "data"  # Use bundled data from PyInstaller
+    DATA_DIR = FILES_DIR  # Use writable files directory for user edition in frozen mode
     LOGS_DIR = FILES_DIR / "logs"
     PHOTOS_DIR = FILES_DIR / "photos"
     DIST_DIR = FILES_DIR / "maps"
@@ -97,3 +97,14 @@ def config_dir() -> Path:
 
 def docs_dir() -> Path:
     return DOCS_DIR
+
+
+def database_path() -> Path:
+    """
+    Returns the canonical database path for the project. Reads from config.settings.DATABASE_PATH if available.
+    """
+    try:
+        from config.settings import DATABASE_PATH
+        return Path(DATABASE_PATH)
+    except Exception:
+        return PROJECT_ROOT / 'data' / 'VH-Database.db'
