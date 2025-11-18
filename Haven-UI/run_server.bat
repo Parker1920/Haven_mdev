@@ -1,11 +1,3 @@
-@ECHO OFF
-REM Try to start preview using Python helper; fallback to PowerShell script if python is not available.
-PUSHD %~dp0
-python "%~dp0scripts\preview.py" %*
-IF %ERRORLEVEL% NEQ 0 (
-	powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\preview.ps1" %*
-)
-POPD
 @echo off
 REM Run the Haven Web UI (Windows batch wrapper) - robust path handling
 pushd %~dp0\..

@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react'
 import { Routes, Route, Link } from 'react-router-dom'
 import Dashboard from './pages/Dashboard'
-import Systems from './pages/SystemsNew'
+import Systems from './pages/Systems'
 import Wizard from './pages/Wizard'
 import RTAI from './pages/RTAI'
 import Settings from './pages/Settings'
@@ -53,5 +53,6 @@ export default function App(){
         </Routes>
       </main>
     </div>
+    </AuthProvider>
   )
 }

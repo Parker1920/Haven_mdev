@@ -886,6 +886,140 @@ async def websocket_rtai(ws: WebSocket):
             pass
 
 
+# ==================== ROUND TABLE AI ENDPOINTS ====================
+
+# Lazy initialization of Round Table AI
+_rtai_instance = None
+
+def get_rtai():
+    """Get or initialize Round Table AI instance."""
+    global _rtai_instance
+    if _rtai_instance is None:
+        try:
+            from src.roundtable_ai.api_integration import get_round_table_ai
+            _rtai_instance = get_round_table_ai(haven_ui_root=HAVEN_UI_ROOT)
+            logger.info("Round Table AI initialized")
+        except Exception as e:
+            logger.error(f"Failed to initialize Round Table AI: {e}")
+            raise
+    return _rtai_instance
+
+
+@app.get('/api/rtai/status')
+async def rtai_status():
+    """Get Round Table AI system status."""
+    try:
+        rtai = get_rtai()
+        stats = rtai.get_statistics()
+        return {
+            'status': 'operational',
+            'statistics': stats,
+            'agents': rtai.list_agents()
+        }
+    except Exception as e:
+        logger.exception('Failed to get RTAI status')
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post('/api/rtai/analyze/discoveries')
+async def rtai_analyze_discoveries(background_tasks: BackgroundTasks, limit: int = 10):
+    """
+    Trigger discovery analysis workflow.
+
+    This runs in the background and logs to ai_chat.log.
+    """
+    try:
+        rtai = get_rtai()
+
+        # Run analysis in background
+        async def run_analysis():
+            try:
+                result = await rtai.analyze_discoveries(limit=limit)
+                logger.info(f"Discovery analysis complete: {result}")
+            except Exception as e:
+                logger.error(f"Discovery analysis failed: {e}")
+
+        background_tasks.add_task(run_analysis)
+
+        return {
+            'status': 'started',
+            'message': f'Analyzing up to {limit} discoveries in background',
+            'note': 'Check /api/rtai/history or /ws/rtai for progress'
+        }
+    except Exception as e:
+        logger.exception('Failed to start discovery analysis')
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get('/api/rtai/health-report')
+async def rtai_health_report(days: int = 7):
+    """Get community health report from The Sentinel."""
+    try:
+        rtai = get_rtai()
+        report = await rtai.get_community_health_report(days=days)
+        return report
+    except Exception as e:
+        logger.exception('Failed to get health report')
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get('/api/rtai/pattern-report')
+async def rtai_pattern_report(days: int = 7):
+    """Get pattern analysis report from The Archivist."""
+    try:
+        rtai = get_rtai()
+        report = await rtai.generate_pattern_report(days=days)
+        return report
+    except Exception as e:
+        logger.exception('Failed to get pattern report')
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post('/api/rtai/keeper/review')
+async def rtai_review_keeper_response(data: dict):
+    """
+    Have The Lorekeeper review a Keeper bot response.
+
+    Request body:
+    {
+        "keeper_response": "The response text",
+        "discovery": {discovery object}
+    }
+    """
+    try:
+        rtai = get_rtai()
+
+        keeper_response = data.get('keeper_response')
+        discovery = data.get('discovery')
+
+        if not keeper_response or not discovery:
+            raise HTTPException(status_code=400, detail='Missing keeper_response or discovery')
+
+        result = await rtai.review_keeper_response(keeper_response, discovery)
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception('Failed to review Keeper response')
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post('/api/rtai/keeper/suggest')
+async def rtai_suggest_keeper_response(discovery: dict):
+    """
+    Have The Lorekeeper suggest a Keeper bot response for a discovery.
+
+    Request body: discovery object
+    """
+    try:
+        rtai = get_rtai()
+        result = await rtai.suggest_keeper_response(discovery)
+        return result
+    except Exception as e:
+        logger.exception('Failed to suggest Keeper response')
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get('/api/dir')
 async def list_dir(path: str = 'data'):
     try:

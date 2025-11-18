@@ -103,7 +103,7 @@ All runtime data for this web UI is stored inside the `Haven-UI` folder to avoid
 	- Logs: `Haven-UI/logs/`
 	- Generated map: `Haven-UI/dist/VH-Map.html`
 
-Set `HAVEN_UI_DIR` environment variable if you wish to change the default storage location.
+Set `HAVEN_UI_DIR` environment variable if you wish https://bleachable-unwieldy-luciano.ngrok-free.devto change the default storage location.
 
 ## Production & Raspberry Pi Deployment Checklist
 1. Build the React UI on a developer machine (recommended) and copy the `Haven-UI/dist` folder to the Pi because `npm` and Node builds can be heavy on Pi:
